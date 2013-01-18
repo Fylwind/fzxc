@@ -85,10 +85,12 @@ local function bnFilter(_, _, text)
     if data then
         local count = tonumber(data)
         if count then dataIndex = index + count end
+        dprint("bnFilter: filtered FZX data.")
         return true
     end
     if index > 0 then
         dataIndex = index - 1
+        dprint("bnFilter: filtered FZX header.")
         return true
     end
 
@@ -140,6 +142,7 @@ local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
         -- arg1 = data, arg13 = sender's presenceID
 
         -- FZX protocol
+        dprint("FZM event: BN_WHISPER", arg1, arg13)
         local index = dataIndex
         if index > 0 then
             local count = dataCount
@@ -156,9 +159,9 @@ local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
                 end
             end
         end
-        local data = string_match(arg1, "^|HFZX:([^|]*)")
-        if data then
-            local count = tonumber(data)
+        local header = string_match(arg1, "^|HFZX:([^|]*)")
+        if header then
+            local count = tonumber(header)
             if count then
                 data = {}
                 dataCount = 1
@@ -197,13 +200,15 @@ local function FZMP_SendMessage(prefix, data, channel, recipient)
 
         -- FZX protocol
         if prefix == "FZX" then
+
+
             if type(data) == "string" then
                 data = {data}
             end
             BNSendWhisper(recipient, string_format("|HFZX:%i|h |h", #data))
-            for _, data in ipairs(data) do
-                dprint("sendTrans", recipient, unpack(data))
-                BNSendWhisper(recipient, data)
+            dprint("FZMP_SendMessage", recipient, unpack(data))
+            for _, item in ipairs(data) do
+                BNSendWhisper(recipient, item)
             end
 
         else
@@ -374,21 +379,18 @@ local function onUpdate(_, elapsed)
     end
 end
 
-local function onEvent(_, event, text, sender, _, _, _, _, _,
+local function onEvent(_, _, text, sender, _, _, _, _, _,
                        _, channelName, _, counter)
-    if event == "CHAT_MSG_CHANNEL" then
-        if not (channelName and text) then return end
-        if string_sub(text, 1, 1) == "[" then return end
-        local channelName = string_lower(channelName)
-        local info = channels[channelName]
-        if not info then return end
-        for _, presenceID in pairs(info.presenceIDs) do
-            local _, _, client, realm = BNGetToonInfo(presenceID)
-            if client == "WoW" and realm ~= playerRealm then
-                FZMP_SendMessage("FZX", "BN_WHISPER",
-                                 {counter, sender, channelName, text},
-                                 presenceID)
-            end
+    if not (channelName and text) then return end
+    if string_sub(text, 1, 1) == "[" then return end
+    local channelName = string_lower(channelName)
+    local info = channels[channelName]
+    if not info then return end
+    for _, presenceID in pairs(info.presenceIDs) do
+        local _, _, client, realm = BNGetToonInfo(presenceID)
+        if client == "WoW" and realm ~= playerRealm then
+            FZMP_SendMessage("FZX", {counter, sender, channelName, text},
+                             "BN_WHISPER", presenceID)
         end
     end
 end
