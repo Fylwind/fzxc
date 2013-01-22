@@ -15,6 +15,8 @@
 --
 ------------------------------------------------------------------------------
 
+local version = {1, 0, 1}
+
 -- Debug ONLY
 -- ==========
 
@@ -70,6 +72,8 @@ local playerRealm = GetRealmName()      -- Use SendChatMessage if the player
                                         -- is already on the same realm
                                         -- (i.e. don't unnecessarily use
                                         -- BNSendWhisper)
+-- TODO: Check if it's possible to SendAddonMessage with WHISPER to a hostile
+--       player.
 
 local dataIndex = 0
 local function bnFilter(_, _, text)
@@ -185,9 +189,8 @@ FZMP:RegisterEvent("CHAT_MSG_BN_WHISPER")
 ChatFrame_AddMessageEventFilter("CHAT_MSG_BN_WHISPER", bnFilter)
 ChatFrame_AddMessageEventFilter("CHAT_MSG_BN_WHISPER_INFORM", bnFilter)
 if not RegisterAddonMessagePrefix("FZM") then
-    -- Highly doubtful it will ever happen, but if it does it's unrecoverable.
-    print("libfzmp: WARNING: Failed to register addon message prefix 'FZM'.  "
-          .. "Communication addons that rely on this protocol (FZMP) may fail.")
+    DEFAULT_CHAT_FRAME:AddMessage("libFZMP: failed to load properly.", 1, 0, 0)
+    error('RegisterAddonMessagePrefix("FZM") returned nil.')
 end
 
 local function sendPacket(prefix, payload)
@@ -257,9 +260,26 @@ local GetChannelName = GetChannelName
 local GetTime = GetTime
 local SlashCmdList_JOIN = SlashCmdList["JOIN"]
 local SendChatMessage = SendChatMessage
+local UnitFactionGroup = UnitFactionGroup
 
 local playerName = UnitName("player")
 local playerRealm = GetRealmName()
+
+-- Localization placeholder
+local L = function(...) return ... end
+
+local playerFaction
+local function getPlayerFaction()
+    -- TODO: Refactor the player faction so it's not being checked
+    --       every single time (note that this only happens after the
+    --       PLAYER_ENTERING_WORLD event)
+    local faction = playerFaction
+    if not faction then
+        faction = UnitFactionGroup("player")
+        playerFaction = faction
+    end
+    return faction
+end
 
 local channels
 local function updateChannels()
@@ -328,8 +348,9 @@ local function receiveTransmission(_, data, _, presenceID)
     dprint("receiveTrans", presenceID, counter, sender, channelName, text)
     -- Check if player is an "alpha" who is designated to post messages
     for _, presenceID in ipairs(info.presenceIDs) do
-        local _, name, client, realm = BNGetToonInfo(presenceID)
-        if client == "WoW" and realm == playerRealm and name > playerName then
+        local _, name, client, realm, _, faction = BNGetToonInfo(presenceID)
+        if client == "WoW" and realm == playerRealm and
+           faction == getPlayerFaction() and name > playerName then
             return
         end
     end
@@ -343,9 +364,10 @@ local function receiveTransmission(_, data, _, presenceID)
     local channelNum = GetChannelName(channelName)
     if not channelNum then return end
     local fullText = string_format("[%s]: %s", sender, text)
+    -- BUG: weird latency bugs can happen here, causing "|" to appear in `text`
     SendChatMessage(fullText, "CHANNEL", nil, channelNum)
     if #fullText > 255 then
-        SendChatMessage(string_format("[%s] (cont'd): %s",
+        SendChatMessage(string_format("[%s] (...): %s",
                                       sender, string_sub(fullText, 256)),
                         "CHANNEL", nil, channelNum)
     end
@@ -387,8 +409,9 @@ local function onEvent(_, _, text, sender, _, _, _, _, _,
     local info = channels[channelName]
     if not info then return end
     for _, presenceID in pairs(info.presenceIDs) do
-        local _, _, client, realm = BNGetToonInfo(presenceID)
-        if client == "WoW" and realm ~= playerRealm then
+        local _, _, client, realm, _, faction = BNGetToonInfo(presenceID)
+        if client == "WoW" and
+           (realm ~= playerRealm or faction ~= getPlayerFaction()) then
             FZMP_SendMessage("FZX", {counter, sender, channelName, text},
                              "BN_WHISPER", presenceID)
         end
@@ -404,28 +427,46 @@ frame:RegisterEvent("CHAT_MSG_CHANNEL")
 
 SLASH_FZXC1 = "/fzxc"
 function SlashCmdList.FZXC(str)
-    if str == "" or str == "info" then
+    local print = function(text)
+        DEFAULT_CHAT_FRAME:AddMessage(text, .7, 1, .4)
+    end
+
+    if str == "version" then
         -- Display all the current channels
-        DEFAULT_CHAT_FRAME:AddMessage("fzxc: displaying all channels ...")
+        print(L("fzxc version %i.%i.%i"):format(unpack(version)))
+
+    elseif str == "info" then
+        -- Display all the current channels
+        print(L("fzxc: displaying all channels ..."))
         for channel, info in pairs(channels) do
-            DEFAULT_CHAT_FRAME:AddMessage("* Channel: " .. channel)
+            print(L("* Channel: %s"):format(channel))
             for _, presenceID in pairs(info.presenceIDs) do
                 local _, name = BNGetFriendInfo(BNGetFriendIndex(presenceID))
-                DEFAULT_CHAT_FRAME:AddMessage("    * " .. name)
+                local _, _, client = BNGetToonInfo(presenceID)
+                local status = ("|cff999999%s|r"):format(L("offline"))
+                if client == "WoW" then
+                    status = ("|cff00ff00%s|r"):format(L("online"))
+                end
+                print(L("  - %s [%s]"):format(name, status))
             end
         end
 
     elseif str == "debug" then
         DEBUG = not DEBUG
-        print("DEBUG = ", DEBUG)
+        print(("fzxc: debug %s"):format(DEBUG and "on" or "off"))
 
     elseif str == "trace" then
-        if not DEBUG then
-            print("Debug mode must be on first!")
-        end
+        if not DEBUG then print("Debug mode must be on first!") end
         dump(channels)
 
     else
-        DEFAULT_CHAT_FRAME:AddMessage("Usage: /fzxc info")
+        local usage = {
+            L("Usage:"),
+            L("    /fzxc <command>"),
+            L("where <command> is one of:"),
+            L("    info"),
+            L("    version"),
+        }
+        for _, line in ipairs(usage) do print(line) end
     end
 end
