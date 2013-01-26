@@ -341,16 +341,41 @@ local function checkMessageSent(presenceID, counter, sender, info, text)
     messages[counter] = {presenceID = presenceID, time = GetTime()}
 end
 
+local realmNullErrorTimer = -1 / 0      -- Minus infinity
 local function receiveTransmission(_, data, _, presenceID)
-    local counter, sender, channelName, text = unpack(data)
+    local counter, sender, channelName, text, realm, faction = unpack(data)
+    if not realm then                   -- Backward compatibility: previous
+        local _                         -- versions didn't send realm & faction
+        _, _, _, realm, _, faction = BNGetToonInfo(presenceID)
+        if realm == "" then
+            realm = "??"
+        end
+    end
     local info = channels[channelName]
-    if not info then return end
+    if not info then
+        return
+    end
     dprint("receiveTrans", presenceID, counter, sender, channelName, text)
     -- Check if player is an "alpha" who is designated to post messages
+    -- This player shall have a name that is placed last in alphabetical order
+    local playerFaction = getPlayerFaction()
     for _, presenceID in ipairs(info.presenceIDs) do
         local _, name, client, realm, _, faction = BNGetToonInfo(presenceID)
-        if client == "WoW" and realm == playerRealm and
-           faction == getPlayerFaction() and name > playerName then
+        if realm == "" then
+            local time = GetTime()
+            if time - realmNullErrorTimer > 300 then
+                -- BUG: BNGetToonInfo can return "" for realm.  How should
+                --      this be handled? [bug:dupmsg]
+                realmNullErrorTimer = time
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    ("fzxc: Due to a Battle.Net bug, I can't determine " ..
+                     "the realm of your friends.  As a result, you may " ..
+                     "broadcast duplicate messages.  To fix this, you will " ..
+                     "need to re-log. [bug:dupmsg]"), 1, 0, 0)
+            end
+        end
+        if (client == "WoW" and realm == playerRealm and
+            faction == playerFaction and name > playerName) then
             return
         end
     end
@@ -359,10 +384,14 @@ local function receiveTransmission(_, data, _, presenceID)
         return
     end
     SlashCmdList_JOIN(channelName)
-    local _, _, _, realm = BNGetToonInfo(presenceID)
+    if realm == playerRealm and faction == playerFaction then
+        return
+    end
     sender = string_format("%s-%s", sender, realm)
     local channelNum = GetChannelName(channelName)
-    if not channelNum then return end
+    if not channelNum then
+        return
+    end
     local fullText = string_format("[%s]: %s", sender, text)
     -- BUG: weird latency bugs can happen here, causing "|" to appear in `text`
     SendChatMessage(fullText, "CHANNEL", nil, channelNum)
@@ -408,12 +437,22 @@ local function onEvent(_, _, text, sender, _, _, _, _, _,
     local channelName = string_lower(channelName)
     local info = channels[channelName]
     if not info then return end
+    local playerFaction = getPlayerFaction()
     for _, presenceID in pairs(info.presenceIDs) do
         local _, _, client, realm, _, faction = BNGetToonInfo(presenceID)
-        if client == "WoW" and
-           (realm ~= playerRealm or faction ~= getPlayerFaction()) then
-            FZMP_SendMessage("FZX", {counter, sender, channelName, text},
-                             "BN_WHISPER", presenceID)
+        if (client == "WoW" and
+            (realm ~= playerRealm or
+             faction ~= playerFaction)) then
+            FZMP_SendMessage(
+                "FZX",
+                {counter,
+                 sender,
+                 channelName,
+                 text,
+                 playerRealm,
+                 playerFaction},
+                "BN_WHISPER",
+                presenceID)
         end
     end
 end
