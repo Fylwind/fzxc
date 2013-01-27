@@ -239,6 +239,7 @@ local unpack = unpack
 local string_format = string.format
 local string_lower = string.lower
 local string_gmatch = string.gmatch
+local string_gsub = string.gsub
 local string_sub = string.sub
 local BNGetFriendInfo = BNGetFriendInfo
 local BNGetFriendIndex = BNGetFriendIndex
@@ -376,8 +377,8 @@ local function receiveTransmission(_, data, _, presenceID)
     if not channelNum then
         return
     end
+    text = string_gsub(text, "\027", "|")
     local fullText = string_format("[%s]: %s", sender, text)
-    -- BUG: weird latency bugs can happen here, causing "|" to appear in `text`
     SendChatMessage(fullText, "CHANNEL", nil, channelNum)
     if #fullText > 255 then
         SendChatMessage(string_format("[%s] (...): %s",
@@ -421,6 +422,7 @@ local function onEvent(_, _, text, sender, _, _, _, _, _,
     local channelName = string_lower(channelName)
     local info = channels[channelName]
     if not info then return end
+    text = string_gsub(text, "|", "\027")
     local playerFaction = getPlayerFaction()
     for _, presenceID in pairs(info.presenceIDs) do
         local _, _, client, realm, _, faction = BNGetToonInfo(presenceID)
