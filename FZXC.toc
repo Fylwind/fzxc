@@ -1,6 +1,7 @@
 ## Interface: 50100
 ## Title: FZXC
-## Author: Fylwind
+## Author: @project-author@
 ## Notes: FurryZ Cross-realm Communicator: allows communication to be shared across realm through Battle.net whispers.
-## Version: 1.0
+## Version: @project-version@
+LibFZMP.lua
 FZXC.lua

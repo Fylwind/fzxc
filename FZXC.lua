@@ -37,210 +37,14 @@ end
 
 local ipairs = ipairs
 local pairs = pairs
-local type = type
 local unpack = unpack
-local string_format = string.format
-local string_lower = string.lower
-local string_gmatch = string.gmatch
-local string_match = string.match
-local string_sub = string.sub
-local BNGetFriendInfo = BNGetFriendInfo
-local BNGetNumFriendToons = BNGetNumFriendToons
-local BNGetToonInfo = BNGetToonInfo
-local BNSendWhisper = BNSendWhisper
-local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter
-local GetChannelName = GetChannelName
-local GetTime = GetTime
-local SendAddonMessage = SendAddonMessage
 
--- TODO: Implement these
-local playerName = UnitName("player")   -- If a message is being sent directly
-                                        -- to the same player *toon*, bypass
-                                        -- all the chat channels and just send
-                                        -- it to the same client.
-local playerRealm = GetRealmName()      -- Use SendChatMessage if the player
-                                        -- is already on the same realm+faction
-                                        -- (i.e. don't unnecessarily use
-                                        -- BNSendWhisper)
-
-local dataIndex = 0
-local function bnFilter(_, _, text)
-
-    -- FZM protocol
-    if string_match(text, "^|HFZM:") then
-        return true
-    end
-
-    -- FZX protocol
-    local index = dataIndex
-    local data = string_match(text, "^|HFZX:([^|]*)")
-    if data then
-        local count = tonumber(data)
-        if count then dataIndex = index + count end
-        dprint("bnFilter: filtered FZX data.")
-        return true
-    end
-    if index > 0 then
-        dataIndex = index - 1
-        dprint("bnFilter: filtered FZX header.")
-        return true
-    end
-
-end
-
-local timer = 0
-local function onUpdate(_, elapsed)
-    local newTimer = timer + elapsed
-    if newTimer < 1 then
-        timer = newTimer
-        return
-    else
-        timer = 0
-    end
-
-    -- Message dispatcher
-
-    -- Use a counter to keep track of how many messages are being sent.  If
-    -- above threshold, additional messages will be sent to the message queue
-    -- instead.  The counter slowly decreases if the message queue is not
-    -- full.
-
-    -- TEMPORARY: just send the message!
-end
-
-local listeners = {}
-
--- For FZX protocol
-local data
-local dataCount
-local dataIndex = 0
-
--- Message receiver
-local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
-                       _, _, _, _, _, _, _, arg13)
-
-    if event == "CHAT_MSG_ADDON" then
-        if arg1 ~= "FZM" then return end
-        -- Handle realm-local message
-        -- (prefix, message, channel, sender)
-
-        -- NOTE: Messages that use CHAT_MSG_ADDON in lieu of BN_WHISPER will
-        --       need to be dealt with separately.
-
-        -- TODO: not implemented
-
-    else
-        -- Handle cross-realm message
-        -- arg1 = data, arg13 = sender's presenceID
-
-        -- FZX protocol
-        dprint("FZM event: BN_WHISPER", arg1, arg13)
-        local index = dataIndex
-        if index > 0 then
-            local count = dataCount
-            dataIndex = index - 1
-            dataCount = count + 1
-            data[count] = arg1
-            if index == 1 then
-                local prefix = "FZX"
-                local prefixListeners = listeners[prefix]
-                if prefixListeners then
-                    for listener, _ in pairs(prefixListeners) do
-                        listener(prefix, data, "BN_WHISPER", arg13)
-                    end
-                end
-            end
-        end
-        local header = string_match(arg1, "^|HFZX:([^|]*)")
-        if header then
-            local count = tonumber(header)
-            if count then
-                data = {}
-                dataCount = 1
-                dataIndex = count
-            end
-        end
-
-        -- FZM protocol
-        local data = string_match(arg1, "^|HFZM:([^|]*)")
-        if data then
-            -- TODO: to be implemented
-        end
-    end
-end
-
-local FZMP = CreateFrame("Frame")
-FZMP:SetScript("OnUpdate", onUpdate)
-FZMP:SetScript("OnEvent", onEvent)
-FZMP:RegisterEvent("CHAT_MSG_ADDON")
-FZMP:RegisterEvent("CHAT_MSG_BN_WHISPER")
-ChatFrame_AddMessageEventFilter("CHAT_MSG_BN_WHISPER", bnFilter)
-ChatFrame_AddMessageEventFilter("CHAT_MSG_BN_WHISPER_INFORM", bnFilter)
-if not RegisterAddonMessagePrefix("FZM") then
-    DEFAULT_CHAT_FRAME:AddMessage("libFZMP: failed to load properly.", 1, 0, 0)
-    error('RegisterAddonMessagePrefix("FZM") returned nil.')
-end
-
-local function sendPacket(prefix, payload)
-end
-
--- For now, payload is assumed to be an array of strings (or just a string)
--- prefix must be 16 chars or less
-local function FZMP_SendMessage(prefix, data, channel, recipient)
-    if channel == "BN_WHISPER" then
-
-        -- FZX protocol
-        if prefix == "FZX" then
-
-
-            if type(data) == "string" then
-                data = {data}
-            end
-            BNSendWhisper(recipient, string_format("|HFZX:%i|h |h", #data))
-            dprint("FZMP_SendMessage", recipient, unpack(data))
-            for _, item in ipairs(data) do
-                BNSendWhisper(recipient, item)
-            end
-
-        else
-            -- TODO: other prefixes are not supported yet
-        end
-
-    else
-         -- TODO: other channels are not supported yet
-    end
-end
-
--- The listener is of the form: (prefix, data, channel, sender)
-local function FZMP_RegisterMessageListener(prefix, listener)
-    local prefixListeners = listeners[prefix]
-    if not prefixListeners then
-        prefixListeners = {}
-        listeners[prefix] = prefixListeners
-    end
-    prefixListeners[listener] = true
-end
-
-local function FZMP_UnregisterMessageListener(prefix, listener)
-    local prefixListeners = listeners[prefix]
-    if prefixListeners then
-        prefixListeners[listener] = nil
-        if #prefixListeners == 0 then
-            listeners[prefix] = nil
-        end
-    end
-end
-
-------------------------------------------------------------------------------
-
-local ipairs = ipairs
-local pairs = pairs
-local unpack = unpack
 local string_format = string.format
 local string_lower = string.lower
 local string_gmatch = string.gmatch
 local string_gsub = string.gsub
 local string_sub = string.sub
+
 local BNGetFriendInfo = BNGetFriendInfo
 local BNGetFriendIndex = BNGetFriendIndex
 local BNGetNumFriends = BNGetNumFriends
@@ -250,6 +54,10 @@ local GetTime = GetTime
 local SlashCmdList_JOIN = SlashCmdList["JOIN"]
 local SendChatMessage = SendChatMessage
 local UnitFactionGroup = UnitFactionGroup
+
+local FZMP = FZMP
+local FZMP_SendMessage = FZMP.SendMessage
+local FZMP_RegisterMessageListener = FZMP.RegisterMessageListener
 
 local playerName = UnitName("player")
 local playerRealm = GetRealmName()
