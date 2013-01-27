@@ -15,10 +15,8 @@
 --
 ------------------------------------------------------------------------------
 
-local version = {1, 0, 1}
-
--- Debug ONLY
--- ==========
+-- Debugging utilities
+-- ===================
 
 local DEBUG
 
@@ -34,14 +32,6 @@ local function dump(var)
         DevTools_Dump(var)
     end
 end
-
--- TODO: Allow players to act as delegates for other players.
--- E.g. A => B => C (A and C are not connected)
-
--- TODO: Versioning conflict -- if a newer version needs to replace an older
--- version that is ALREADY initialized, how do you unregister all of its event
--- handlers?  Or is there a better way -- don't initialize until all possible
--- versions have loaded?  Read up on this.  Maybe Ace3 has a way.
 
 ------------------------------------------------------------------------------
 
@@ -69,11 +59,9 @@ local playerName = UnitName("player")   -- If a message is being sent directly
                                         -- all the chat channels and just send
                                         -- it to the same client.
 local playerRealm = GetRealmName()      -- Use SendChatMessage if the player
-                                        -- is already on the same realm
+                                        -- is already on the same realm+faction
                                         -- (i.e. don't unnecessarily use
                                         -- BNSendWhisper)
--- TODO: Check if it's possible to SendAddonMessage with WHISPER to a hostile
---       player.
 
 local dataIndex = 0
 local function bnFilter(_, _, text)
@@ -270,9 +258,6 @@ local L = function(...) return ... end
 
 local playerFaction
 local function getPlayerFaction()
-    -- TODO: Refactor the player faction so it's not being checked
-    --       every single time (note that this only happens after the
-    --       PLAYER_ENTERING_WORLD event)
     local faction = playerFaction
     if not faction then
         faction = UnitFactionGroup("player")
@@ -361,22 +346,21 @@ local function receiveTransmission(_, data, _, presenceID)
     local playerFaction = getPlayerFaction()
     for _, presenceID in ipairs(info.presenceIDs) do
         local _, name, client, realm, _, faction = BNGetToonInfo(presenceID)
-        if realm == "" then
-            local time = GetTime()
-            if time - realmNullErrorTimer > 300 then
-                -- BUG: BNGetToonInfo can return "" for realm.  How should
-                --      this be handled? [bug:dupmsg]
-                realmNullErrorTimer = time
-                DEFAULT_CHAT_FRAME:AddMessage(
-                    ("fzxc: Due to a Battle.Net bug, I can't determine " ..
-                     "the realm of your friends.  As a result, you may " ..
-                     "broadcast duplicate messages.  To fix this, you will " ..
-                     "need to re-log. [bug:dupmsg]"), 1, 0, 0)
+        if client == "WoW" then
+            if realm == "" then         -- [bug:dupmsg]
+                local time = GetTime()
+                if time - realmNullErrorTimer > 300 then
+                    realmNullErrorTimer = time
+                    DEFAULT_CHAT_FRAME:AddMessage(
+                        ("fzxc: Due to a Battle.Net bug, I can't determine " ..
+                         "the realm of your friends.  As a result, you may " ..
+                         "broadcast duplicate messages.  To fix this, you " ..
+                         "will need to re-log. [bug:dupmsg]"), 1, 0, 0)
+                end
+            elseif (realm == playerRealm and faction == playerFaction and
+                    name > playerName) then
+                return
             end
-        end
-        if (client == "WoW" and realm == playerRealm and
-            faction == playerFaction and name > playerName) then
-            return
         end
     end
     dprint("receiveTrans2")
@@ -472,7 +456,7 @@ function SlashCmdList.FZXC(str)
 
     if str == "version" then
         -- Display all the current channels
-        print(L("fzxc version %i.%i.%i"):format(unpack(version)))
+        print(L("fzxc version %s"):format("@project-version@"))
 
     elseif str == "info" then
         -- Display all the current channels
