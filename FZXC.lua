@@ -39,6 +39,7 @@ local ipairs = ipairs
 local pairs = pairs
 local unpack = unpack
 
+local string_find = string.find
 local string_format = string.format
 local string_lower = string.lower
 local string_gmatch = string.gmatch
@@ -61,58 +62,67 @@ local FZMP_RegisterMessageListener = FZMP.RegisterMessageListener
 
 local playerName = UnitName("player")
 local playerRealm = GetRealmName()
+local playerFaction
+
+local version = "@project-version@"
+local timestamp = tonumber("@project-timestamp@")
+local sources
+local messageArchive = {}
 
 -- Localization placeholder
 local L = function(...) return ... end
 
-local playerFaction
-local function getPlayerFaction()
-    local faction = playerFaction
-    if not faction then
-        faction = UnitFactionGroup("player")
-        playerFaction = faction
-    end
-    return faction
+local function cprint(text)
+    DEFAULT_CHAT_FRAME:AddMessage(text, .7, 1, .4)
 end
 
-local channels
-local function updateChannels()
-    if not channels then
-        channels = {}
-    end
-    for _, info in pairs(channels) do
-        info.presenceIDs = {}
-        info.presenceIDsEnd = 1
-    end
+local function updateSources()
+    sources = {}
     for friendIndex = 1, BNGetNumFriends() do
         local presenceID, _, _, _, _, _, _, _, _, _, _, _, note
             = BNGetFriendInfo(friendIndex)
         if note then
-            for channelName in string_gmatch(note, "#(%w+)") do
-                channelName = string_lower(channelName)
-                local info = channels[channelName]
-                if not info then
-                    info = {
-                        messageArchive = {},
-                        presenceIDs = {},
-                        presenceIDsEnd = 1
-                    }
-                    channels[channelName] = info
+            for source, separator, dest in string_gmatch(
+                string_lower(note),
+                "#([^:#%s]+)(:?)([^:#%s]*)")
+            do
+                if separator ~= ":" then
+                    dest = source
                 end
-                local presenceIDs = info.presenceIDs
-                local presenceIDsEnd = info.presenceIDsEnd
-                presenceIDs[presenceIDsEnd] = presenceID
-                info.presenceIDsEnd = presenceIDsEnd + 1
+                local dests = sources[source]
+                if not dests then
+                    dests = {}
+                    sources[source] = dests
+                end
+                local presenceIDs = dests[dest]
+                if not presenceIDs then
+                    presenceIDs = {}
+                    dests[dest] = presenceIDs
+                end
+                local _, name, client, realm, _, faction
+                    = BNGetToonInfo(presenceID)
+                if client == "WoW" and (realm ~= playerRealm or
+                                        faction ~= playerFaction) then
+                    presenceIDs[presenceID] = {
+                        connected = true,
+                        name = name,
+                        realm = realm,
+                        faction = faction
+                    }
+                else
+                    presenceIDs[presenceID] = {
+                        connected = false
+                    }
+                end
             end
         end
     end
-    return channels
 end
 
 -- Ensure message is not just another duplicate from a different player
-local function checkMessageSent(presenceID, counter, sender, info, text)
-    local hash = string_format("%s:%s", sender, text)
-    local archive = info.messageArchive
+local function checkMessageSent(presenceID, counter, sender, channel, text)
+    local hash = string_format("%s#%s#%s", channel, sender, text)
+    local archive = messageArchive
     local messages = archive[hash]
     if not messages then
         archive[hash] = {{presenceID = presenceID, time = GetTime()}}
@@ -135,9 +145,52 @@ local function checkMessageSent(presenceID, counter, sender, info, text)
     messages[counter] = {presenceID = presenceID, time = GetTime()}
 end
 
-local realmNullErrorTimer = -1 / 0      -- Minus infinity
+local versionChecked
+local function checkVersion(data, data2)
+    if versionChecked then
+        return
+    end
+    local otherTimestamp = tonumber(data2)
+    if timestamp and otherTimestamp and timestamp < otherTimestamp then
+        cprint(string_format(
+                   L("fzxc: a new version (%s) is available."),
+                   data))
+        versionChecked = true
+    end
+end
+
+local ECHO_REQUEST = 1
+local ECHO_REPLY = 2
+local VERSION_REQUEST = 3
+local VERSION_REPLY = 4
+
+local function replyMessage(presenceID, request, data, _, data2)
+    dprint("System message:", presenceID, request, data, data2)
+    if request == ECHO_REQUEST then
+        FZMP_SendMessage(
+            "FZX",
+            {ECHO_REPLY, data, ""},
+            "BN_WHISPER",
+            presenceID)
+    elseif request == ECHO_REPLY then
+        -- Received ECHO_REPLY
+    elseif request == VERSION_REQUEST then
+        FZMP_SendMessage(
+            "FZX",
+            {VERSION_REPLY, version, "", tostring(timestamp)},
+            "BN_WHISPER",
+            presenceID)
+        checkVersion(data, data2)
+    elseif request == VERSION_REPLY then
+        checkVersion(data, data2)
+    end
+end
+
 local function receiveTransmission(_, data, _, presenceID)
-    local counter, sender, channelName, text, realm, faction = unpack(data)
+    local counter, sender, channel, text, realm, faction = unpack(data)
+    if channel == "" then
+        replyMessage(presenceID, unpack(data))
+    end
     if not realm then                   -- Backward compatibility: previous
         local _                         -- versions didn't send realm & faction
         _, _, _, realm, _, faction = BNGetToonInfo(presenceID)
@@ -145,44 +198,16 @@ local function receiveTransmission(_, data, _, presenceID)
             realm = "??"
         end
     end
-    local info = channels[channelName]
-    if not info then
+    dprint("receive", presenceID, counter, sender, channel, text)
+    if checkMessageSent(presenceID, counter, sender, channel, text) then
         return
     end
-    dprint("receiveTrans", presenceID, counter, sender, channelName, text)
-    -- Check if player is an "alpha" who is designated to post messages
-    -- This player shall have a name that is placed last in alphabetical order
-    local playerFaction = getPlayerFaction()
-    for _, presenceID in ipairs(info.presenceIDs) do
-        local _, name, client, realm, _, faction = BNGetToonInfo(presenceID)
-        if client == "WoW" then
-            if realm == "" then         -- [bug:dupmsg]
-                local time = GetTime()
-                if time - realmNullErrorTimer > 300 then
-                    realmNullErrorTimer = time
-                    DEFAULT_CHAT_FRAME:AddMessage(
-                        ("fzxc: Due to a Battle.Net bug, I can't determine " ..
-                         "the realm of your friends.  As a result, you may " ..
-                         "broadcast duplicate messages.  To fix this, you " ..
-                         "will need to re-log. [bug:dupmsg]"), 1, 0, 0)
-                end
-            elseif (realm == playerRealm and faction == playerFaction and
-                    name > playerName) then
-                return
-            end
-        end
-    end
-    dprint("receiveTrans2")
-    if checkMessageSent(presenceID, counter, sender, info, text) then
-        return
-    end
-    SlashCmdList_JOIN(channelName)
     if realm == playerRealm and faction == playerFaction then
         return
     end
     sender = string_format("%s-%s", sender, realm)
-    local channelNum = GetChannelName(channelName)
-    if not channelNum then
+    local channelNum = GetChannelName(channel)
+    if not channelNum or channelNum <= 4 then -- Forbid public channels
         return
     end
     text = string_gsub(text, "\027", "|")
@@ -195,6 +220,87 @@ local function receiveTransmission(_, data, _, presenceID)
     end
 end
 
+local frame = CreateFrame("Frame")
+
+local function onPlayerEnteringWorld()
+    frame:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    playerFaction = UnitFactionGroup("player")
+    updateSources()
+    local connectedPresenceIDs = {}
+    for source, dests in pairs(sources) do
+        for dest, presenceIDs in pairs(dests) do
+            for presenceID, info in pairs(presenceIDs) do
+                if info.connected then
+                    connectedPresenceIDs[presenceID] = true
+                end
+            end
+        end
+    end
+    for presenceID, _ in pairs(connectedPresenceIDs) do
+        FZMP_SendMessage("FZX", {VERSION_REQUEST, version, "", timestamp},
+                         "BN_WHISPER", presenceID)
+    end
+    FZMP_RegisterMessageListener("FZX", receiveTransmission)
+end
+
+local function onChatMsgChannel(text, sender, _, _, _, _, _,
+                                _, channelName, _, counter)
+    if not (channelName and text) then
+        return
+    end
+    if string_sub(text, 1, 1) == "[" then
+        return
+    end
+    local _, _, source = string_find(channelName, "([^%s]*)")
+    source = string_lower(source)
+    updateSources()
+    local dests = sources[source]
+    if not dests then
+        return
+    end
+    text = string_gsub(text, "|", "\027")
+    local messages = {}
+    for dest, presenceIDs in pairs(dests) do
+        for presenceID, info in pairs(presenceIDs) do
+            if info.connected then
+                local name = info.name
+                local hash = string_format(
+                    "%s#%s#%s",
+                    info.realm,
+                    info.faction,
+                    dest)
+                local message = messages[hash]
+                if message then
+                    -- The player with the "Z"-most name gets to broadcast it
+                    if message.name < name then
+                        message.name = name
+                        message.presenceID = presenceID
+                    end
+                else
+                    message = {
+                        dest = dest,
+                        name = name,
+                        presenceID = presenceID
+                    }
+                    messages[hash] = message
+                end
+            end
+        end
+    end
+    for _, message in pairs(messages) do
+        FZMP_SendMessage(
+            "FZX",
+            {counter,
+             sender,
+             message.dest,
+             text,
+             playerRealm,
+             playerFaction},
+            "BN_WHISPER",
+            message.presenceID)
+    end
+end
+
 local timer = 0
 local messageExpiryTime = 15
 local function onUpdate(_, elapsed)
@@ -202,95 +308,78 @@ local function onUpdate(_, elapsed)
     if newTimer < messageExpiryTime then
         timer = newTimer
         return
-    else
-        timer = 0
     end
+    timer = 0
     -- Clear the expired messages
+    updateSources()
     local time = GetTime()
-    updateChannels()
-    for _, info in pairs(channels) do
-        local archive = info.messageArchive
-        for hash, messages in pairs(archive) do
-            for counter, message in pairs(messages) do
-                if message.time + messageExpiryTime < time then
-                    messages[counter] = nil
-                end
+    local archive = messageArchive
+    for hash, messages in pairs(archive) do
+        for counter, message in pairs(messages) do
+            if message.time + messageExpiryTime < time then
+                messages[counter] = nil
             end
-            if #archive[hash] == 0 then
-                archive[hash] = nil
-            end
+        end
+        if #archive[hash] == 0 then
+            archive[hash] = nil
         end
     end
 end
-
-local function onEvent(_, _, text, sender, _, _, _, _, _,
-                       _, channelName, _, counter)
-    if not (channelName and text) then return end
-    if string_sub(text, 1, 1) == "[" then return end
-    local channelName = string_lower(channelName)
-    local info = channels[channelName]
-    if not info then return end
-    text = string_gsub(text, "|", "\027")
-    local playerFaction = getPlayerFaction()
-    for _, presenceID in pairs(info.presenceIDs) do
-        local _, _, client, realm, _, faction = BNGetToonInfo(presenceID)
-        if (client == "WoW" and
-            (realm ~= playerRealm or
-             faction ~= playerFaction)) then
-            FZMP_SendMessage(
-                "FZX",
-                {counter,
-                 sender,
-                 channelName,
-                 text,
-                 playerRealm,
-                 playerFaction},
-                "BN_WHISPER",
-                presenceID)
-        end
-    end
-end
-
-updateChannels()
-FZMP_RegisterMessageListener("FZX", receiveTransmission)
-local frame = CreateFrame("Frame")
 frame:SetScript("OnUpdate", onUpdate)
-frame:SetScript("OnEvent", onEvent)
+
 frame:RegisterEvent("CHAT_MSG_CHANNEL")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+local function onEvent(_, event, ...)
+    if event == "PLAYER_ENTERING_WORLD" then
+        onPlayerEnteringWorld(...)
+    elseif event == "CHAT_MSG_CHANNEL" then
+        onChatMsgChannel(...)
+    end
+end
+frame:SetScript("OnEvent", onEvent)
 
 SLASH_FZXC1 = "/fzxc"
 function SlashCmdList.FZXC(str)
-    local print = function(text)
-        DEFAULT_CHAT_FRAME:AddMessage(text, .7, 1, .4)
-    end
 
     if str == "version" then
         -- Display all the current channels
-        print(L("fzxc version %s"):format("@project-version@"))
+        cprint(L("fzxc version %s [%i]"):format(version, timestamp or 0))
 
     elseif str == "info" then
         -- Display all the current channels
-        print(L("fzxc: displaying all channels ..."))
-        for channel, info in pairs(channels) do
-            print(L("* Channel: %s"):format(channel))
-            for _, presenceID in pairs(info.presenceIDs) do
-                local _, name = BNGetFriendInfo(BNGetFriendIndex(presenceID))
-                local _, _, client = BNGetToonInfo(presenceID)
-                local status = ("|cff999999%s|r"):format(L("offline"))
-                if client == "WoW" then
-                    status = ("|cff00ff00%s|r"):format(L("online"))
+        cprint(L("fzxc: displaying all channels ..."))
+        updateSources()
+        for source, dests in pairs(sources) do
+            for dest, presenceIDs in pairs(dests) do
+                if source == dest then
+                    cprint(("* #%s"):format(source))
+                else
+                    cprint(("* #%s:%s"):format(source, dest))
                 end
-                print(L("  - %s [%s]"):format(name, status))
+                for presenceID, info in pairs(presenceIDs) do
+                    local _, name =
+                        BNGetFriendInfo(BNGetFriendIndex(presenceID))
+                    local status
+                    if info.connected then
+                        status = ("|cff00ff00%s|r"):format(L("connected"))
+                    else
+                        status = ("|cff999999%s|r"):format(L("not connected"))
+                    end
+                    cprint(("  - %s [%s]"):format(name, status))
+                end
             end
         end
 
     elseif str == "debug" then
         DEBUG = not DEBUG
-        print(("fzxc: debug %s"):format(DEBUG and "on" or "off"))
+        FZMP_DEBUG = DEBUG
+        cprint(("fzxc: debug %s"):format(DEBUG and "on" or "off"))
 
     elseif str == "trace" then
-        if not DEBUG then print("Debug mode must be on first!") end
-        dump(channels)
+        if not DEBUG then
+            cprint("Debug mode must be on first!")
+        end
+        dump(sources)
 
     else
         local usage = {
@@ -300,6 +389,8 @@ function SlashCmdList.FZXC(str)
             L("    info"),
             L("    version"),
         }
-        for _, line in ipairs(usage) do print(line) end
+        for _, line in ipairs(usage) do
+            cprint(line)
+        end
     end
 end
