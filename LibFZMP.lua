@@ -1236,7 +1236,7 @@ local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
         -- FZX protocol
         --@alpha@
         if FZMP_DEBUG then
-            print("received BNWHISPER", arg1, arg13)
+            print("Received BN_WHISPER", arg1, arg13)
         end
         --@end-alpha@
         local index = dataIndex
@@ -1304,11 +1304,11 @@ function _M.SendMessage(prefix, data, channel, recipient)
 
             --@alpha@
             if FZMP_DEBUG then
-                print("FZMP_SendMessage", recipient, unpack(data))
+                print("FZMP.SendMessage", recipient, unpack(data))
             end
             --@end-alpha@
             for _, item in ipairs(data) do
-                BNSendWhisper(recipient, item)
+                BNSendWhisper(recipient, tostring(item))
             end
 
         else

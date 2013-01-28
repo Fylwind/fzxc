@@ -22,7 +22,7 @@ local DEBUG
 
 local function dprint(...)
     if DEBUG then
-        print(...)
+        print("fzxc:", ...)
     end
 end
 
@@ -165,7 +165,8 @@ local VERSION_REQUEST = 3
 local VERSION_REPLY = 4
 
 local function replyMessage(presenceID, request, data, _, data2)
-    dprint("System message:", presenceID, request, data, data2)
+    dprint("SYS_MSG", presenceID, request, data, data2)
+    request = tonumber(request)
     if request == ECHO_REQUEST then
         FZMP_SendMessage(
             "FZX",
@@ -173,7 +174,10 @@ local function replyMessage(presenceID, request, data, _, data2)
             "BN_WHISPER",
             presenceID)
     elseif request == ECHO_REPLY then
-        -- Received ECHO_REPLY
+        local prevTime = tonumber(data)
+        if prevTime and DEBUG then
+            dprint("ECHO", GetTime() - prevTime)
+        end
     elseif request == VERSION_REQUEST then
         FZMP_SendMessage(
             "FZX",
@@ -198,7 +202,7 @@ local function receiveTransmission(_, data, _, presenceID)
             realm = "??"
         end
     end
-    dprint("receive", presenceID, counter, sender, channel, text)
+    dprint("RECEIVE", presenceID, counter, sender, channel, text)
     if checkMessageSent(presenceID, counter, sender, channel, text) then
         return
     end
@@ -380,6 +384,19 @@ function SlashCmdList.FZXC(str)
             cprint("Debug mode must be on first!")
         end
         dump(sources)
+
+    elseif str:sub(1, 5) == "ping " then
+        if not DEBUG then
+            cprint("Debug mode must be on first!")
+        end
+        local presenceID = GetAutoCompletePresenceID(str:sub(6))
+        if presenceID then
+            FZMP_SendMessage(
+                "FZX",
+                {ECHO_REQUEST, tostring(GetTime()), ""},
+                "BN_WHISPER",
+                presenceID)
+        end
 
     else
         local usage = {
