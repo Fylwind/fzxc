@@ -52,6 +52,7 @@ local BNGetFriendIndex = BNGetFriendIndex
 local BNGetNumFriends = BNGetNumFriends
 local BNGetToonInfo = BNGetToonInfo
 local GetChannelName = GetChannelName
+local GetChannelList = GetChannelList
 local GetTime = GetTime
 local SlashCmdList_JOIN = SlashCmdList["JOIN"]
 local SendChatMessage = SendChatMessage
@@ -195,10 +196,35 @@ local function replyMessage(presenceID, request, data, _, data2)
     end
 end
 
+-- channel is assumed to be in lowercase
+local function parseChannel(channel)
+    local num = GetChannelName(channel)
+    if num and num > 0 then
+        return "CHANNEL", num
+    end
+    -- Public channels have a zone suffix so GetChannelName won't work
+    num = nil
+    for _, name in pairs({GetChannelList()}) do
+        if num then
+            local _, _, name = string_find(name, "([^%s]*)")
+            if string_lower(name) == channel then
+                return "CHANNEL", num
+            end
+            num = nil
+        else
+            num = name
+        end
+    end
+end
+
 local function receiveTransmission(_, data, _, presenceID)
     local counter, sender, channel, text, realm, faction = unpack(data)
     if channel == "" then
         replyMessage(presenceID, unpack(data))
+        return
+    end
+    if not sources[channel] then        -- Reject if channel tag absent
+        dprint("REJECT", presenceID, counter, sender, channel, text)
         return
     end
     if not realm then                   -- Backward compatibility: previous
@@ -216,22 +242,28 @@ local function receiveTransmission(_, data, _, presenceID)
         return
     end
     sender = string_format("%s-%s", sender, realm)
-    local channelNum = GetChannelName(channel)
-    if not channelNum or channelNum <= 4 then -- Forbid public channels
+    channel = string_lower(channel)
+    local channelType, channelNum = parseChannel(channel)
+    if not channelType then
         return
     end
     text = string_gsub(text, "\027", "|")
     local fullText = string_format("[%s]: %s", sender, text)
-    SendChatMessage(fullText, "CHANNEL", nil, channelNum)
+    SendChatMessage(fullText, channelType, nil, channelNum)
     if #fullText > 255 then
         SendChatMessage(string_format("[%s] (...): %s",
                                       sender, string_sub(fullText, 256)),
-                        "CHANNEL", nil, channelNum)
+                        channelType, nil, channelNum)
     end
 end
 
+local function isPublicChannel(channel)
+    local channelType, channelNum = parseChannel(channel)
+    return channelType == "CHANNEL" and channelNum < 5
+end
+
 local function onChatMsgChannel(text, sender, _, _, _, _, _,
-                                _, channelName, _, counter)
+                                channelNum, channelName, _, counter)
     if not (channelName and text) then
         return
     end
@@ -275,16 +307,22 @@ local function onChatMsgChannel(text, sender, _, _, _, _, _,
         end
     end
     for _, message in pairs(messages) do
-        FZMP_SendMessage(
-            "FZX",
-            {counter,
-             sender,
-             message.dest,
-             text,
-             playerRealm,
-             playerFaction},
-            "BN_WHISPER",
-            message.presenceID)
+        local dest = message.dest
+        if not isPublicChannel(source) or not isPublicChannel(dest) then
+            FZMP_SendMessage(
+                "FZX",
+                {counter,
+                 sender,
+                 dest,
+                 text,
+                 playerRealm,
+                 playerFaction},
+                "BN_WHISPER",
+                message.presenceID)
+        else                       -- Public-to-public forwarding is forbidden
+            cprintf(L"fzxc: Cannot forward from %s to %s.", source, dest)
+            cprintf(L"      Please check your configuration.")
+        end
     end
 end
 
