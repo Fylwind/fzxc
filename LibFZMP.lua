@@ -152,10 +152,12 @@ end
 --
 ---
 
+_M.BASE85 = {}
+
 ---
 -- The standard ASCII85 encoding for encoding data in base-85.
 --
-_M.BASE85_ASCII = {
+_M.BASE85.ASCII = {
     zeroChar = "z",
     invalidChars = "[^%s]",
     toBase85 = {
@@ -191,7 +193,7 @@ _M.BASE85_ASCII = {
 ---
 -- Custom base-85 encoding for the internal messaging protocol.
 --
-_M.BASE85_FZM = {
+_M.BASE85.FZM = {
     zeroChar = ".",
     invalidChars = "[^%s]",
     toBase85 = {
@@ -224,7 +226,7 @@ _M.BASE85_FZM = {
     }
 }
 
-local BASE85_ASCII = _M.BASE85_ASCII
+local BASE85_ASCII = _M.BASE85.ASCII
 
 ---
 -- Encodes a string of bytes using a base-85 encoding.
@@ -648,6 +650,10 @@ local TYPE_STRING = 0x6
 local TYPE_STRING_REF = 0x7
 local TYPE_ARRAY = 0x8
 
+-- Note: on some platforms NaN can cause crashes so support has been removed.
+local INF = math.huge
+local NAN = nil -- (-1)^.5
+
 -- Find the maximum integer that can be represented fully
 local INT_MAX
 local EXP_MAX = 1024                    -- Safety net to prevent infinite loops
@@ -697,10 +703,6 @@ local function decodeUnsigned(stream, flagSize)
     unsigned = unsigned * leftover + bytes[1] % leftover
     return unsigned - 128, str, (bytes[1] - bytes[1] % leftover) / leftover
 end
-
-local inf = math.huge
-local nan = (-1)^.5
-
 
 local function serializeObject(object, state)
     local size = ""
@@ -797,15 +799,15 @@ local function serializeObject(object, state)
     elseif typeID == TYPE_FLOAT then
         local e, s, eSign, sSign, de
         -- Store special numbers using an abnormal combo of sign & magnitude
-        if object == inf then
-            if object == -inf then
+        if object == INF then
+            if object == -INF then
                 eSign, e, sSign, s = 1, 0, 0, 0 -- Not-a-number
             else
                 eSign, e, sSign, s = 1, 0, 0, 1 -- Infinity
             end
-        elseif object == -inf then
+        elseif object == -INF then
             eSign, e, sSign, s = 1, 0, 1, 1 -- Minus-infinity
-        elseif object ~= object or object == nan then
+        elseif object ~= object or object == NAN then
             eSign, e, sSign, s = 1, 0, 0, 0 -- Not-a-number
         else
             sSign, eSign = 0, 0
@@ -922,11 +924,11 @@ local function deserializeObject(typeID, stream, state)
         if eSign == 1 then
             if e == 0 then              -- Special value
                 if s == 0 then
-                    return nan
+                    return NAN
                 elseif sSign == 0 then
-                    return inf
+                    return INF
                 end
-                return -inf
+                return -INF
             end
             e = -e
         end
