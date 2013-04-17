@@ -53,6 +53,8 @@ local BNGetNumFriends = BNGetNumFriends
 local BNGetToonInfo = BNGetToonInfo
 local GetChannelName = GetChannelName
 local GetChannelList = GetChannelList
+local GetIgnoreName = GetIgnoreName
+local GetNumIgnores = GetNumIgnores
 local GetTime = GetTime
 local SlashCmdList_JOIN = SlashCmdList["JOIN"]
 local SendChatMessage = SendChatMessage
@@ -70,7 +72,6 @@ local playerFaction
 local version = "@project-version@"
 local timestamp = tonumber("@project-timestamp@")
 local frame = CreateFrame("Frame")
-local sources
 local messageArchive = {}
 
 -- Localization placeholder
@@ -84,6 +85,7 @@ local function cprintf(format, ...)
     cprint(string_format(format, ...))
 end
 
+local sources
 local function updateSources()
     sources = {}
     for friendIndex = 1, BNGetNumFriends() do
@@ -124,6 +126,14 @@ local function updateSources()
                 end
             end
         end
+    end
+end
+
+local ignoreList = {}
+local function updateIgnoreList()
+    ignoreList = {}
+    for i = 1, GetNumIgnores() do
+        ignoreList[GetIgnoreName(i)] = true
     end
 end
 
@@ -326,15 +336,15 @@ local function onChatMsgChannel(text, sender, _, _, _, _, _,
     end
 end
 
-local timer = 0
-local messageExpiryTime = 15
+local time = 0
+local timer = 15
 local function onUpdate(_, elapsed)
-    local newTimer = timer + elapsed
-    if newTimer < messageExpiryTime then
-        timer = newTimer
+    local newTime = time + elapsed
+    if newTime < timer then
+        time = newTime
         return
     end
-    timer = 0
+    time = 0
     -- Clear the expired messages
     updateSources()
     local time = GetTime()
@@ -349,18 +359,28 @@ local function onUpdate(_, elapsed)
             archive[hash] = nil
         end
     end
+    updateIgnoreList()
+end
+
+local function channelFilter(_, _, text)
+    if text and string_sub(text, 1, 1) == "[" then
+        -- Filter out ignored players
+        return ignoreList[string_match(text, "%[([^%]]+)]")]
+    end
 end
 
 local function enable()
     FZXC_DB.disabled = nil
     frame:RegisterEvent("CHAT_MSG_CHANNEL")
     FZMP_RegisterMessageListener("FZX", receiveTransmission)
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL", channelFilter)
 end
 
 local function disable()
     FZXC_DB.disabled = true
     frame:UnregisterEvent("CHAT_MSG_CHANNEL")
     FZMP_UnregisterMessageListener("FZX", receiveTransmission)
+    ChatFrame_RemoveMessageEventFilter("CHAT_MSG_CHANNEL", channelFilter)
 end
 
 local slashCommands = {
@@ -490,9 +510,10 @@ local function initialize()
 
     -- Start the message disposer
     frame:SetScript("OnUpdate", onUpdate)
+    updateSources()
+    updateIgnoreList()
 
     -- Query version of other player's addons
-    updateSources()
     local connectedPresenceIDs = {}
     for source, dests in pairs(sources) do
         for dest, presenceIDs in pairs(dests) do
