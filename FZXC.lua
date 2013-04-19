@@ -338,6 +338,7 @@ end
 
 local time = 0
 local timer = 15
+local messageCacheDuration = timer
 local function onUpdate(_, elapsed)
     local newTime = time + elapsed
     if newTime < timer then
@@ -351,7 +352,7 @@ local function onUpdate(_, elapsed)
     local archive = messageArchive
     for hash, messages in pairs(archive) do
         for counter, message in pairs(messages) do
-            if message.time + messageExpiryTime < time then
+            if message.time + messageCacheDuration < time then
                 messages[counter] = nil
             end
         end
