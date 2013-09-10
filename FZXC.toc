@@ -1,4 +1,4 @@
-## Interface: 50300
+## Interface: 50400
 ## Title: FZ Cross-realm Communicator
 ## Author: @project-author@
 ## Notes: Allows communication to be shared across realm through Battle.net whispers.
