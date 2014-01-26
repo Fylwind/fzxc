@@ -77,12 +77,27 @@ local messageArchive = {}
 -- Localization placeholder
 local L = function(...) return ... end
 
+-- Prints the `text` in a special color.  Each line is printed as a separated
+-- message.
 local function cprint(text)
-    DEFAULT_CHAT_FRAME:AddMessage(text, .7, 1, .4)
+    for line in string_gmatch(text .. "\n", "([^\n]*)\n") do
+        DEFAULT_CHAT_FRAME:AddMessage(line, .7, 1, .4)
+    end
 end
 
+-- Prints a message with formatted arguments.
 local function cprintf(format, ...)
     cprint(string_format(format, ...))
+end
+
+-- Prints an error message with formatted arguments.
+local function cerrorf(format, ...)
+    cprintf(L"fzxc: |cffff3300error:|r %s", string_format(format, ...))
+end
+
+-- Prints a warning message with formatted arguments.
+local function cwarnf(format, ...)
+    cprintf(L"fzxc: |cffff9900warning:|r %s", string_format(format, ...))
 end
 
 local sources
@@ -227,6 +242,18 @@ local function parseChannel(channel)
     end
 end
 
+-- Displays a message in a chat channel prefixed by the player name and realm.
+local function displayMessage(sender, text, channelType, channelNum)
+    local outputFormat = FZXC_DB.outputFormat
+    local fullText = string_format(outputFormat, sender, text)
+    SendChatMessage(fullText, channelType, nil, channelNum)
+    if #fullText > 255 then
+        SendChatMessage(string_format(outputFormat, sender,
+                                      string_sub(fullText, 256)),
+                        channelType, nil, channelNum)
+    end
+end
+
 local function receiveTransmission(_, data, _, presenceID)
     local counter, sender, channel, text, realm, faction = unpack(data)
     if channel == "" then
@@ -257,14 +284,8 @@ local function receiveTransmission(_, data, _, presenceID)
     if not channelType then
         return
     end
-    text = string_gsub(text, "\027", "|")
-    local fullText = string_format("[%s]: %s", sender, text)
-    SendChatMessage(fullText, channelType, nil, channelNum)
-    if #fullText > 255 then
-        SendChatMessage(string_format("[%s] (...): %s",
-                                      sender, string_sub(fullText, 256)),
-                        channelType, nil, channelNum)
-    end
+    displayMessage(sender, string_gsub(text, "\027", "|"),
+                   channelType, channelNum)
 end
 
 local function isPublicChannel(channel)
@@ -395,8 +416,7 @@ local slashCommands = {
         description = L"Displays the current channels.",
         action = function()
             if FZXC_DB.disabled then
-                cprintf(L"fzxc: %s",
-                        string_format("|cffff6600%s|r", L"disabled"))
+                cprintf("fzxc: |cffff6600%s|r", L"disabled")
                 return
             end
             cprint(L"fzxc: displaying all channels ...")
@@ -422,6 +442,40 @@ local slashCommands = {
                         cprintf("    %s [%s]", name, status)
                     end
                 end
+            end
+        end
+    },
+    outputFormat = {
+        description =
+            L"Views/changes the chat output format.\n" ..
+            L"To view, input no arguments.\n" ..
+            L"To change, input a single argument in quotes.\n" ..
+            L"Default value is |cffffffff'[%s]: %s'|r.\n" ..
+            L"First |cffffffff%s|r is the player name and realm.\n" ..
+            L"Second |cffffffff%s|r is the chat message.\n" ..
+            L"Make sure the format string is not excessively long.",
+        action = function(args)
+            -- If no arguments, just print the current value.
+            if args == "" then
+                cprintf(L"fzxc: output format is currently |cffffffff'%s'|r.",
+                        FZXC_DB.outputFormat)
+                return
+            end
+            -- Check if the argument is in the correct syntax
+            local len   = #args
+            local first = string_sub(args, 1, 1)
+            local last  = string_sub(args, len, len)
+            if len < 2 or not ((first == "'" and last == "'") or
+                               (first == '"' and last == '"')) then
+                cerrorf(L"argument must be surrounded by matching quotes.")
+                return
+            end
+            local arg = string_sub(args, 2, #args - 1)
+            -- Save the setting
+            FZXC_DB.outputFormat = arg
+            cprintf(L"fzxc: output format set to |cffffffff'%s'|r.", arg)
+            if arg == "" then
+                cwarnf(L"output format is empty.")
             end
         end
     },
@@ -467,6 +521,9 @@ local slashCommands = {
         action = function()
             DEBUG = not DEBUG
             FZMP_DEBUG = DEBUG
+            FZMP_DEBUG_SYMB = {
+                displayMessage = displayMessage
+            }
             cprintf("fzxc: debug %s", DEBUG and "on" or "off")
         end
     },
@@ -509,6 +566,11 @@ local function initialize()
     FZXC_DB.version = version
     FZXC_DB.timestamp = timestamp
 
+    -- Set the default value for `outputFormat`
+    if not FZXC_DB.outputFormat then
+        FZXC_DB.outputFormat = "[%s]: %s"
+    end
+
     -- Start the message disposer
     frame:SetScript("OnUpdate", onUpdate)
     updateSources()
@@ -549,7 +611,8 @@ local function initialize()
         for command, commandInfo in pairs(slashCommands) do
             description = commandInfo.description
             if description then
-                cprintf("    |cffffff00%s|r - %s", command, description)
+                cprintf("    |cffffff00%s|r - %s", command,
+                        string_gsub(description, "\n", "\n      "))
             end
         end
     end
