@@ -18,7 +18,7 @@
 -- Debugging utilities
 -- ===================
 
-local DEBUG
+local DEBUG = false
 
 local function dprint(...)
     if DEBUG then
@@ -104,7 +104,7 @@ local sources
 local function updateSources()
     sources = {}
     for friendIndex = 1, BNGetNumFriends() do
-        local presenceID, _, _, _, _, _, _, _, _, _, _, _, note
+        local presenceID, _, _, _, _, toonID, client, _, _, _, _, _, note
             = BNGetFriendInfo(friendIndex)
         if note then
             for source, separator, dest in string_gmatch(
@@ -124,21 +124,28 @@ local function updateSources()
                     presenceIDs = {}
                     dests[dest] = presenceIDs
                 end
-                local _, name, client, realm, _, faction
-                    = BNGetToonInfo(presenceID)
-                if client == "WoW" and (realm ~= playerRealm or
-                                        faction ~= playerFaction) then
-                    presenceIDs[presenceID] = {
-                        connected = true,
-                        name = name,
-                        realm = realm,
-                        faction = faction
-                    }
-                else
-                    presenceIDs[presenceID] = {
-                        connected = false
-                    }
-                end
+                
+                local online = false
+                if toonID ~= nil and toonID ~= 0 then
+					local _, name, _, realm, _, faction = BNGetToonInfo(toonID)
+					--print( "presenceID="..tostring(presenceID).." source="..source.." dest="..dest.." client="..tostring(client)..
+						--" toonID="..tostring(toonID).." name="..tostring(name).." realm="..tostring(realm).." faction="..tostring(faction) )
+					if client == "WoW" and (realm ~= playerRealm or
+											faction ~= playerFaction) then
+						presenceIDs[presenceID] = {
+							connected = true,
+							name = name,
+							realm = realm,
+							faction = faction,
+							toonID = toonID
+						}
+						online = true
+					end
+				end
+				
+				if not online then
+					presenceIDs[presenceID] = { connected = false }
+				end
             end
         end
     end
@@ -196,13 +203,13 @@ local VERSION_REQUEST = 3
 local VERSION_REPLY = 4
 
 local function replyMessage(presenceID, request, data, _, data2)
-    dprint("SYS_MSG", presenceID, request, data, data2)
+    dprint("SYS_MSG", presenceID, destID, request, data, data2)
     request = tonumber(request)
     if request == ECHO_REQUEST then
         FZMP_SendMessage(
-            "FZX",
+            "FZXC",
             {ECHO_REPLY, data, ""},
-            "BN_WHISPER",
+            "BN_CHAT_MSG_ADDON",
             presenceID)
     elseif request == ECHO_REPLY then
         local prevTime = tonumber(data)
@@ -211,9 +218,9 @@ local function replyMessage(presenceID, request, data, _, data2)
         end
     elseif request == VERSION_REQUEST then
         FZMP_SendMessage(
-            "FZX",
+            "FZXC",
             {VERSION_REPLY, version, "", tostring(timestamp)},
-            "BN_WHISPER",
+            "BN_CHAT_MSG_ADDON",
             presenceID)
         checkVersion(data, data2)
     elseif request == VERSION_REPLY then
@@ -255,6 +262,12 @@ local function displayMessage(sender, text, channelType, channelNum)
 end
 
 local function receiveTransmission(_, data, _, presenceID)
+	if DEBUG then
+		print( "receiveTransmission data = " ..tostring(data) )
+		for key,value in pairs(data) do
+			print( tostring(key) .. " = " .. tostring( value ) )
+		end
+	end
     local counter, sender, channel, text, realm, faction = unpack(data)
     if channel == "" then
         replyMessage(presenceID, unpack(data))
@@ -278,7 +291,7 @@ local function receiveTransmission(_, data, _, presenceID)
     if realm == playerRealm and faction == playerFaction then
         return
     end
-    sender = string_format("%s-%s", sender, realm)
+    --sender = string_format("%s-%s", sender, realm)
     channel = string_lower(channel)
     local channelType, channelNum = parseChannel(channel)
     if not channelType then
@@ -340,16 +353,18 @@ local function onChatMsgChannel(text, sender, _, _, _, _, _,
     for _, message in pairs(messages) do
         local dest = message.dest
         if not isPublicChannel(source) or not isPublicChannel(dest) then
+			local data = { counter, sender, dest, text, playerRealm, playerFaction }
+			if DEBUG then
+				print( "sending message "..tostring(data) )
+			end
+			local presenceIDs = dests[dest]
+			local destID = presenceIDs[message.presenceID].toonID
+			if destID == nil or destID == 0 then destID = message.presenceID end
             FZMP_SendMessage(
-                "FZX",
-                {counter,
-                 sender,
-                 dest,
-                 text,
-                 playerRealm,
-                 playerFaction},
-                "BN_WHISPER",
-                message.presenceID)
+                "FZXC",
+                data,
+                "BN_CHAT_MSG_ADDON",
+                destID)
         else                       -- Public-to-public forwarding is forbidden
             cprintf(L"fzxc: Cannot forward from %s to %s.", source, dest)
             cprintf(L"      Please check your configuration.")
@@ -394,14 +409,14 @@ end
 local function enable()
     FZXC_DB.disabled = nil
     frame:RegisterEvent("CHAT_MSG_CHANNEL")
-    FZMP_RegisterMessageListener("FZX", receiveTransmission)
+    FZMP_RegisterMessageListener("FZXC", receiveTransmission)
     ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL", channelFilter)
 end
 
 local function disable()
     FZXC_DB.disabled = true
     frame:UnregisterEvent("CHAT_MSG_CHANNEL")
-    FZMP_UnregisterMessageListener("FZX", receiveTransmission)
+    FZMP_UnregisterMessageListener("FZXC", receiveTransmission)
     ChatFrame_RemoveMessageEventFilter("CHAT_MSG_CHANNEL", channelFilter)
 end
 
@@ -545,9 +560,9 @@ local slashCommands = {
             local presenceID = GetAutoCompletePresenceID(name)
             if presenceID then
                 FZMP_SendMessage(
-                    "FZX",
+                    "FZXC",
                     {ECHO_REQUEST, tostring(GetTime()), ""},
-                    "BN_WHISPER",
+                    "BN_CHAT_MSG_ADDON",
                     presenceID)
             end
         end
@@ -577,19 +592,21 @@ local function initialize()
     updateIgnoreList()
 
     -- Query version of other player's addons
-    local connectedPresenceIDs = {}
+    local connectedDestIDs = {}
     for source, dests in pairs(sources) do
         for dest, presenceIDs in pairs(dests) do
             for presenceID, info in pairs(presenceIDs) do
                 if info.connected then
-                    connectedPresenceIDs[presenceID] = true
+					local destID = info.toonID
+					if destID == nil or destID == 0 then destID = presenceID end
+                    connectedDestIDs[destID] = true
                 end
             end
         end
     end
-    for presenceID, _ in pairs(connectedPresenceIDs) do
-        FZMP_SendMessage("FZX", {VERSION_REQUEST, version, "", timestamp},
-                         "BN_WHISPER", presenceID)
+    for destID, _ in pairs(connectedDestIDs) do
+        FZMP_SendMessage("FZXC", {VERSION_REQUEST, version, "", timestamp},
+                         "BN_CHAT_MSG_ADDON", destID)
     end
 
     -- Set up slash commands
