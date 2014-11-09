@@ -1174,17 +1174,9 @@ local function bnFilter(_, _, text)
     if string_match(text, "^|HFZM:") then
         return true
     end
-
-    -- FZX protocol
-    local index = dataIndex
-    local data = string_match(text, "^|HFZX:([^|]*)")
-    if data then
-        local count = tonumber(data)
-        if count then dataIndex = index + count end
-        return true
-    end
-    if index > 0 then
-        dataIndex = index - 1
+    
+    -- FZXC protocol
+    if string_match(text, "^|HFZXC:") then
         return true
     end
 
@@ -1212,10 +1204,6 @@ end
 
 local listeners = {}
 
--- For FZX protocol
-local data
-local dataCount
-local dataIndex = 0
 
 -- Message receiver
 local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
@@ -1226,52 +1214,40 @@ local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
         -- Handle realm-local message
         -- (prefix, message, channel, sender)
 
-        -- NOTE: Messages that use CHAT_MSG_ADDON in lieu of BN_WHISPER will
+        -- NOTE: Messages that use CHAT_MSG_ADDON in lieu of BN_CHAT_MSG_ADDON will
         --       need to be dealt with separately.
 
         -- TODO: not implemented
 
-    else
+    elseif event == "BN_CHAT_MSG_ADDON" then
         -- Handle cross-realm message
         -- arg1 = data, arg13 = sender's presenceID
 
         -- FZX protocol
-        --@alpha@
+        --[===[@alpha@
         if FZMP_DEBUG then
-            print("Received BN_WHISPER", arg1, arg13)
+            print("Received BN_CHAT_MSG_ADDON", arg1, arg13)
         end
-        --@end-alpha@
-        local index = dataIndex
-        if index > 0 then
-            local count = dataCount
-            dataIndex = index - 1
-            dataCount = count + 1
-            data[count] = arg1
-            if index == 1 then
-                local prefix = "FZX"
-                local prefixListeners = listeners[prefix]
-                if prefixListeners then
-                    for listener, _ in pairs(prefixListeners) do
-                        listener(prefix, data, "BN_WHISPER", arg13)
-                    end
-                end
-            end
-        end
-        local header = string_match(arg1, "^|HFZX:([^|]*)")
-        if header then
-            local count = tonumber(header)
-            if count then
-                data = {}
-                dataCount = 1
-                dataIndex = count
-            end
-        end
-
-        -- FZM protocol
-        local data = string_match(arg1, "^|HFZM:([^|]*)")
-        if data then
-            -- TODO: to be implemented
-        end
+        --@end-alpha@]===]
+        --print("Received BN_CHAT_MSG_ADDON arg1="..tostring(arg1) )
+        --print( " arg2="..tostring(arg2) )
+        --print( " arg3="..tostring(arg3) )
+        --print( " arg4="..tostring(arg4) )
+        --print( " arg5="..tostring(arg13) )
+		
+		if arg1 == "FZXC" then
+			local data = _M.Deserialize( arg2, FORMAT.FZSF0 )
+			--for key,value in pairs(data) do
+				--print( " recv ["..tostring(key) .. "] = " .. tostring( value ) )
+			--end
+			
+			local prefixListeners = listeners["FZXC"]
+			if prefixListeners then
+				for listener, _ in pairs(prefixListeners) do
+					listener(prefix, data, "BN_CHAT_MSG_ADDON", arg4)
+				end
+			end
+		end
     end
 end
 
@@ -1280,6 +1256,7 @@ frame:SetScript("OnUpdate", onUpdate)
 frame:SetScript("OnEvent", onEvent)
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("CHAT_MSG_BN_WHISPER")
+frame:RegisterEvent("BN_CHAT_MSG_ADDON")
 ChatFrame_AddMessageEventFilter("CHAT_MSG_BN_WHISPER", bnFilter)
 ChatFrame_AddMessageEventFilter("CHAT_MSG_BN_WHISPER_INFORM", bnFilter)
 if not RegisterAddonMessagePrefix("FZM") then
@@ -1293,25 +1270,18 @@ end
 -- For now, payload is assumed to be an array of strings (or just a string)
 -- prefix must be 16 chars or fewer
 function _M.SendMessage(prefix, data, channel, recipient)
-    if channel == "BN_WHISPER" then
+    if channel == "BN_CHAT_MSG_ADDON" then
 
-        -- FZX protocol
-        if prefix == "FZX" then
+        -- FZXC protocol
+        if prefix == "FZXC" then
 
 
             if type(data) == "string" then
                 data = {data}
             end
-            BNSendWhisper(recipient, string_format("|HFZX:%i|h |h", #data))
-
-            --@alpha@
-            if FZMP_DEBUG then
-                print("FZMP.SendMessage", recipient, unpack(data))
-            end
-            --@end-alpha@
-            for _, item in ipairs(data) do
-                BNSendWhisper(recipient, tostring(item))
-            end
+			
+			local payload = _M.Serialize( data, FORMAT.FZSF0 )
+            BNSendGameData( recipient, "FZXC", payload )
 
         else
             -- TODO: other prefixes are not supported yet

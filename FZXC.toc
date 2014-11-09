@@ -1,7 +1,7 @@
-## Interface: 50400
+## Interface: 60000
 ## Title: FZ Cross-realm Communicator
 ## Author: @project-author@
-## Notes: Allows communication to be shared across realm through Battle.net whispers.
+## Notes: Allows communication to be shared across realm through Battle.net.
 ## Version: @project-version@
 ## SavedVariables: FZXC_DB
 LibFZMP.lua
