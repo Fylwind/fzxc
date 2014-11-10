@@ -25,14 +25,16 @@
 -- Debugging utilities
 -- ===================
 
-local DEBUG = false
+local DEBUG
 
+-- Prints a diagnostic message.  This is suppressed if `DEBUG` is false-like.
 local function dprint(...)
     if DEBUG then
         print("fzxc:", ...)
     end
 end
 
+-- Dumps the contents of a table.
 local function dump(var)
     if DEBUG then
         UIParentLoadAddOn("Blizzard_DebugTools")
@@ -268,10 +270,8 @@ end
 
 local function receiveTransmission(_, data, _, presenceID)
     if DEBUG then
-        dprint("receiveTransmission data = ", data)
-        for key, value in pairs(data) do
-            dprint(key, " = ", value)
-        end
+        dprint("receiveTransmission: data:")
+        dump(data)
     end
     local counter, sender, channel, text, realm, faction = unpack(data)
     if channel == "" then
@@ -303,11 +303,6 @@ local function receiveTransmission(_, data, _, presenceID)
     end
     displayMessage(sender, string_gsub(text, "\027", "|"),
                    channelType, channelNum)
-end
-
-local function isPublicChannel(channel)
-    local channelType, channelNum = parseChannel(channel)
-    return channelType == "CHANNEL" and channelNum < 5
 end
 
 local function onChatMsgChannel(text, sender, _, _, _, _, _,
@@ -356,17 +351,12 @@ local function onChatMsgChannel(text, sender, _, _, _, _, _,
     end
     for _, message in pairs(messages) do
         local dest = message.dest
-        if not isPublicChannel(source) or not isPublicChannel(dest) then
-            local data = {counter, sender, dest, text, playerRealm, playerFaction}
-            dprint("SENDING_MESSAGE", data)
-            local presenceIDs = dests[dest]
-            local destID = presenceIDs[message.presenceID].toonID
-            if destID == nil or destID == 0 then destID = message.presenceID end
-            FZMP_SendMessage("FZXC", data, "BN_CHAT_MSG_ADDON", destID)
-        else                       -- Public-to-public forwarding is forbidden
-            cprintf(L"fzxc: Cannot forward from %s to %s.", source, dest)
-            cprintf(L"      Please check your configuration.")
-        end
+        local data = {counter, sender, dest, text, playerRealm, playerFaction}
+        dprint("SENDING_MESSAGE", data)
+        local presenceIDs = dests[dest]
+        local destID = presenceIDs[message.presenceID].toonID
+        if destID == nil or destID == 0 then destID = message.presenceID end
+        FZMP_SendMessage("FZXC", data, "BN_CHAT_MSG_ADDON", destID)
     end
 end
 
