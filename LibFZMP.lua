@@ -1,17 +1,24 @@
--- Copyright (c) 2013 Fylwind <fylwind314@gmail.com>
+-- The MIT License (MIT)
 --
--- This program is free software: you can redistribute it and/or modify it
--- under the terms of the GNU Lesser General Public License as published by
--- the Free Software Foundation, either version 3 of the License, or (at your
--- option) any later version.
+-- Copyright (c) 2013-2014 Fylwind, Wraithstrike
 --
--- This program is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
--- License for more details.
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
 --
--- You should have received a copy of the GNU Lesser General Public License
--- along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-- The above copyright notice and this permission notice shall be included in
+-- all copies or substantial portions of the Software.
+--
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
 --
 ------------------------------------------------------------------------------
 
@@ -1174,7 +1181,7 @@ local function bnFilter(_, _, text)
     if string_match(text, "^|HFZM:") then
         return true
     end
-    
+
     -- FZXC protocol
     if string_match(text, "^|HFZXC:") then
         return true
@@ -1229,25 +1236,17 @@ local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
             print("Received BN_CHAT_MSG_ADDON", arg1, arg13)
         end
         --@end-alpha@]===]
-        --print("Received BN_CHAT_MSG_ADDON arg1="..tostring(arg1) )
-        --print( " arg2="..tostring(arg2) )
-        --print( " arg3="..tostring(arg3) )
-        --print( " arg4="..tostring(arg4) )
-        --print( " arg5="..tostring(arg13) )
-		
-		if arg1 == "FZXC" then
-			local data = _M.Deserialize( arg2, FORMAT.FZSF0 )
-			--for key,value in pairs(data) do
-				--print( " recv ["..tostring(key) .. "] = " .. tostring( value ) )
-			--end
-			
-			local prefixListeners = listeners["FZXC"]
-			if prefixListeners then
-				for listener, _ in pairs(prefixListeners) do
-					listener(prefix, data, "BN_CHAT_MSG_ADDON", arg4)
-				end
-			end
-		end
+
+        if arg1 == "FZXC" then
+            local data = _M.Deserialize(arg2)
+
+            local prefixListeners = listeners["FZXC"]
+            if prefixListeners then
+                for listener, _ in pairs(prefixListeners) do
+                    listener(prefix, data, "BN_CHAT_MSG_ADDON", arg4)
+                end
+            end
+        end
     end
 end
 
@@ -1279,9 +1278,9 @@ function _M.SendMessage(prefix, data, channel, recipient)
             if type(data) == "string" then
                 data = {data}
             end
-			
-			local payload = _M.Serialize( data, FORMAT.FZSF0 )
-            BNSendGameData( recipient, "FZXC", payload )
+
+            local payload = _M.Serialize(data, FORMAT.FZSF0)
+            BNSendGameData(recipient, "FZXC", payload)
 
         else
             -- TODO: other prefixes are not supported yet

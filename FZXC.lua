@@ -1,17 +1,24 @@
--- Copyright (c) 2013 Fylwind <fylwind314@gmail.com>
+-- The MIT License (MIT)
 --
--- This program is free software: you can redistribute it and/or modify it
--- under the terms of the GNU General Public License as published by the Free
--- Software Foundation, either version 3 of the License, or (at your option)
--- any later version.
+-- Copyright (c) 2013-2014 Fylwind, Wraithstrike
 --
--- This program is distributed in the hope that it will be useful, but WITHOUT
--- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
--- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
--- more details.
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
 --
--- You should have received a copy of the GNU General Public License along
--- with this program.  If not, see <http://www.gnu.org/licenses/>.
+-- The above copyright notice and this permission notice shall be included in
+-- all copies or substantial portions of the Software.
+--
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
 --
 ------------------------------------------------------------------------------
 
@@ -124,28 +131,26 @@ local function updateSources()
                     presenceIDs = {}
                     dests[dest] = presenceIDs
                 end
-                
+
                 local online = false
                 if toonID ~= nil and toonID ~= 0 then
-					local _, name, _, realm, _, faction = BNGetToonInfo(toonID)
-					--print( "presenceID="..tostring(presenceID).." source="..source.." dest="..dest.." client="..tostring(client)..
-						--" toonID="..tostring(toonID).." name="..tostring(name).." realm="..tostring(realm).." faction="..tostring(faction) )
-					if client == "WoW" and (realm ~= playerRealm or
-											faction ~= playerFaction) then
-						presenceIDs[presenceID] = {
-							connected = true,
-							name = name,
-							realm = realm,
-							faction = faction,
-							toonID = toonID
-						}
-						online = true
-					end
-				end
-				
-				if not online then
-					presenceIDs[presenceID] = { connected = false }
-				end
+                    local _, name, _, realm, _, faction = BNGetToonInfo(toonID)
+                    if client == "WoW" and (realm ~= playerRealm or
+                                            faction ~= playerFaction) then
+                        presenceIDs[presenceID] = {
+                            connected = true,
+                            name = name,
+                            realm = realm,
+                            faction = faction,
+                            toonID = toonID
+                        }
+                        online = true
+                    end
+                end
+
+                if not online then
+                    presenceIDs[presenceID] = { connected = false }
+                end
             end
         end
     end
@@ -262,12 +267,12 @@ local function displayMessage(sender, text, channelType, channelNum)
 end
 
 local function receiveTransmission(_, data, _, presenceID)
-	if DEBUG then
-		print( "receiveTransmission data = " ..tostring(data) )
-		for key,value in pairs(data) do
-			print( tostring(key) .. " = " .. tostring( value ) )
-		end
-	end
+    if DEBUG then
+        dprint("receiveTransmission data = ", data)
+        for key, value in pairs(data) do
+            dprint(key, " = ", value)
+        end
+    end
     local counter, sender, channel, text, realm, faction = unpack(data)
     if channel == "" then
         replyMessage(presenceID, unpack(data))
@@ -291,7 +296,6 @@ local function receiveTransmission(_, data, _, presenceID)
     if realm == playerRealm and faction == playerFaction then
         return
     end
-    --sender = string_format("%s-%s", sender, realm)
     channel = string_lower(channel)
     local channelType, channelNum = parseChannel(channel)
     if not channelType then
@@ -353,18 +357,12 @@ local function onChatMsgChannel(text, sender, _, _, _, _, _,
     for _, message in pairs(messages) do
         local dest = message.dest
         if not isPublicChannel(source) or not isPublicChannel(dest) then
-			local data = { counter, sender, dest, text, playerRealm, playerFaction }
-			if DEBUG then
-				print( "sending message "..tostring(data) )
-			end
-			local presenceIDs = dests[dest]
-			local destID = presenceIDs[message.presenceID].toonID
-			if destID == nil or destID == 0 then destID = message.presenceID end
-            FZMP_SendMessage(
-                "FZXC",
-                data,
-                "BN_CHAT_MSG_ADDON",
-                destID)
+            local data = {counter, sender, dest, text, playerRealm, playerFaction}
+            dprint("SENDING_MESSAGE", data)
+            local presenceIDs = dests[dest]
+            local destID = presenceIDs[message.presenceID].toonID
+            if destID == nil or destID == 0 then destID = message.presenceID end
+            FZMP_SendMessage("FZXC", data, "BN_CHAT_MSG_ADDON", destID)
         else                       -- Public-to-public forwarding is forbidden
             cprintf(L"fzxc: Cannot forward from %s to %s.", source, dest)
             cprintf(L"      Please check your configuration.")
@@ -597,8 +595,8 @@ local function initialize()
         for dest, presenceIDs in pairs(dests) do
             for presenceID, info in pairs(presenceIDs) do
                 if info.connected then
-					local destID = info.toonID
-					if destID == nil or destID == 0 then destID = presenceID end
+                    local destID = info.toonID
+                    if destID == nil or destID == 0 then destID = presenceID end
                     connectedDestIDs[destID] = true
                 end
             end

@@ -1,6 +1,6 @@
 ## Interface: 60000
 ## Title: FZ Cross-realm Communicator
-## Author: @project-author@
+## Author: Fylwind, Wraithstrike
 ## Notes: Allows communication to be shared across realm through Battle.net.
 ## Version: @project-version@
 ## SavedVariables: FZXC_DB
