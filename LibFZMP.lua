@@ -1213,8 +1213,7 @@ local listeners = {}
 
 
 -- Message receiver
-local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
-                       _, _, _, _, _, _, _, arg13)
+local function onEvent(_, event, arg1, arg2, _, arg4)
 
     if event == "CHAT_MSG_ADDON" then
         if arg1 ~= "FZM" then return end
@@ -1228,14 +1227,14 @@ local function onEvent(_, event, arg1, arg2, arg3, arg4, _,
 
     elseif event == "BN_CHAT_MSG_ADDON" then
         -- Handle cross-realm message
-        -- arg1 = data, arg13 = sender's presenceID
+        -- arg1 = prefix, arg2 = data, arg4 = sender's toonID
 
-        -- FZX protocol
-        --[===[@alpha@
+        --@alpha@
         if FZMP_DEBUG then
-            print("Received BN_CHAT_MSG_ADDON", arg1, arg13)
+            print("libfzmp: onEvent: BN_CHAT_MSG_ADDON from presenceID = ",
+                  arg4)
         end
-        --@end-alpha@]===]
+        --@end-alpha@
 
         if arg1 == "FZXC" then
             local data = _M.Deserialize(arg2)
@@ -1274,13 +1273,19 @@ function _M.SendMessage(prefix, data, channel, recipient)
         -- FZXC protocol
         if prefix == "FZXC" then
 
-
             if type(data) == "string" then
                 data = {data}
             end
 
             local payload = _M.Serialize(data, FORMAT.FZSF0)
             BNSendGameData(recipient, "FZXC", payload)
+
+            --@alpha@
+            if FZMP_DEBUG then
+                print("libfzmp: FZMP.SendMessage: sending message to",
+                      recipient)
+            end
+            --@end-alpha@
 
         else
             -- TODO: other prefixes are not supported yet

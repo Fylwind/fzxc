@@ -77,6 +77,8 @@ local FZMP_UnregisterMessageListener = FZMP.UnregisterMessageListener
 local playerName = UnitName("player")
 local playerRealm = GetRealmName()
 local playerFaction
+local playerNameRealm = string_format("%s-%s", playerName,
+                                      string_gsub(playerRealm, " ", ""))
 
 local version = "@project-version@"
 local timestamp = tonumber("@project-timestamp@")
@@ -109,8 +111,24 @@ local function cwarnf(format, ...)
     cprintf(L"fzxc: |cffff9900warning:|r %s", string_format(format, ...))
 end
 
+local isConnectedRealm
+local function isConnectedRealm_init()
+    if isConnectedRealm ~= nil then
+        return
+    end
+    isConnectedRealm = {[string_gsub(playerRealm, " ", "")] = true}
+    local connectedRealms = GetAutoCompleteRealms()
+    if connectedRealms == nil then
+        return
+    end
+    for _, realm in ipairs(connectedRealms) do
+        isConnectedRealm[realm] = true
+    end
+end
+
 local sources
 local function updateSources()
+    isConnectedRealm_init()
     sources = {}
     for friendIndex = 1, BNGetNumFriends() do
         local presenceID, _, _, _, _, toonID, client, _, _, _, _, _, note
@@ -137,7 +155,7 @@ local function updateSources()
                 local online = false
                 if toonID ~= nil and toonID ~= 0 then
                     local _, name, _, realm, _, faction = BNGetToonInfo(toonID)
-                    if client == "WoW" and (realm ~= playerRealm or
+                    if client == "WoW" and (not isConnectedRealm[realm] or
                                             faction ~= playerFaction) then
                         presenceIDs[presenceID] = {
                             connected = true,
@@ -167,16 +185,17 @@ local function updateIgnoreList()
 end
 
 -- Ensure message is not just another duplicate from a different player
-local function checkMessageSent(presenceID, counter, sender, channel, text)
+local function checkMessageSent(toonID, counter, sender, channel, text)
+    dprint(toonID)
     local hash = string_format("%s#%s#%s", channel, sender, text)
     local archive = messageArchive
     local messages = archive[hash]
     if not messages then
-        archive[hash] = {{presenceID = presenceID, time = GetTime()}}
+        archive[hash] = {{toonID = toonID, time = GetTime()}}
         return
     end
     for _, message in pairs(messages) do
-        if message.presenceID ~= presenceID then
+        if message.toonID ~= toonID then
             -- Message sent by a different player which we'll ignore since
             -- it's most likely a duplicate (it's hard to tell)
             return true
@@ -189,7 +208,7 @@ local function checkMessageSent(presenceID, counter, sender, channel, text)
         -- (Assuming the former case ...)
         return true
     end
-    messages[counter] = {presenceID = presenceID, time = GetTime()}
+    messages[counter] = {toonID = toonID, time = GetTime()}
 end
 
 local versionChecked
@@ -209,26 +228,32 @@ local ECHO_REPLY = 2
 local VERSION_REQUEST = 3
 local VERSION_REPLY = 4
 
-local function replyMessage(presenceID, request, data, _, data2)
-    dprint("SYS_MSG", presenceID, destID, request, data, data2)
+local function replyMessage(toonID, request, data, _, data2)
+    dprint("replyMessage: ")
+    dump({toonID, destID, request, data, data2})
     request = tonumber(request)
     if request == ECHO_REQUEST then
+        dprint("replyMessage: received ECHO_REQUEST")
         FZMP_SendMessage(
             "FZXC",
             {ECHO_REPLY, data, ""},
             "BN_CHAT_MSG_ADDON",
-            presenceID)
+            toonID)
     elseif request == ECHO_REPLY then
         local prevTime = tonumber(data)
-        if prevTime and DEBUG then
-            dprint("ECHO", GetTime() - prevTime)
+        if prevTime then
+            cprintf("fzxc: ping = %.3f s from %d",
+                    GetTime() - prevTime, toonID)
+        else
+            dprint("replyMessage: received invalid ECHO_REPLY from",
+                   toonID)
         end
     elseif request == VERSION_REQUEST then
         FZMP_SendMessage(
             "FZXC",
             {VERSION_REPLY, version, "", tostring(timestamp)},
             "BN_CHAT_MSG_ADDON",
-            presenceID)
+            toonID)
         checkVersion(data, data2)
     elseif request == VERSION_REPLY then
         checkVersion(data, data2)
@@ -268,29 +293,37 @@ local function displayMessage(sender, text, channelType, channelNum)
     end
 end
 
-local function receiveTransmission(_, data, _, presenceID)
-    if DEBUG then
-        dprint("receiveTransmission: data:")
-        dump(data)
+local function isPrimaryRecipient(recipients)
+    isConnectedRealm_init()
+    for _, recipient in ipairs(recipients) do
+        local _, _, realm = string_find(recipient, "-([^-]*)")
+        if isConnectedRealm[realm] and recipient > playerNameRealm then
+            return false
+        end
     end
-    local counter, sender, channel, text, realm, faction = unpack(data)
+    return true
+end
+
+local function receiveTransmission(_, data, _, toonID)
+    dprint("receiveTransmission: data =")
+    dump(data)
+    local counter, sender, channel, text, realm, faction, recipients
+        = unpack(data)
     if channel == "" then
-        replyMessage(presenceID, unpack(data))
+        replyMessage(toonID, unpack(data))
         return
     end
     if not sources[channel] then        -- Reject if channel tag absent
-        dprint("REJECT", presenceID, counter, sender, channel, text)
+        dprint("receiveTransmission: rejected (absent channel tag):",
+               toonID, counter, sender, channel, text)
         return
     end
-    if not realm then                   -- Backward compatibility: previous
-        local _                         -- versions didn't send realm & faction
-        _, _, _, realm, _, faction = BNGetToonInfo(presenceID)
-        if realm == "" then
-            realm = "??"
-        end
+    if not realm then
+        dprint("receiveTransmission: rejected (realm missing):")
+        return
     end
-    dprint("RECEIVE", presenceID, counter, sender, channel, text)
-    if checkMessageSent(presenceID, counter, sender, channel, text) then
+    dprint("receiveTransmission:", toonID, counter, sender, channel, text)
+    if checkMessageSent(toonID, counter, sender, channel, text) then
         return
     end
     if realm == playerRealm and faction == playerFaction then
@@ -299,6 +332,9 @@ local function receiveTransmission(_, data, _, presenceID)
     channel = string_lower(channel)
     local channelType, channelNum = parseChannel(channel)
     if not channelType then
+        return
+    end
+    if recipients and not isPrimaryRecipient(recipients) then
         return
     end
     displayMessage(sender, string_gsub(text, "\027", "|"),
@@ -349,13 +385,36 @@ local function onChatMsgChannel(text, sender, _, _, _, _, _,
             end
         end
     end
+    local recipients = {}               -- FactionDest -> NameRealm
     for _, message in pairs(messages) do
         local dest = message.dest
-        local data = {counter, sender, dest, text, playerRealm, playerFaction}
-        dprint("SENDING_MESSAGE", data)
         local presenceIDs = dests[dest]
-        local destID = presenceIDs[message.presenceID].toonID
+        local info = presenceIDs[message.presenceID]
+        local factionDest = string_format("%s#%s", info.faction, dest)
+
+        -- append to recipients[factionDest]
+        local recipients_factionDest = recipients[factionDest]
+        if recipients_factionDest == nil then
+            recipients_factionDest = {[0] = 0}
+            recipients[factionDest] = recipients_factionDest
+        end
+        local i = recipients_factionDest[0] + 1
+        recipients_factionDest[i] =
+            string_format("%s-%s", info.name,
+                          string_gsub(info.realm, " ", ""))
+        recipients_factionDest[0] = i
+    end
+    recipients[0] = nil
+    for _, message in pairs(messages) do
+        local dest = message.dest
+        local info = dests[dest][message.presenceID]
+        local destID = info.toonID
         if destID == nil or destID == 0 then destID = message.presenceID end
+        local factionDest = string_format("%s#%s", info.faction, dest)
+        local data = {counter, sender, dest, text, playerRealm, playerFaction,
+                      recipients[factionDest]}
+        dprint("onChatMsgChannel: sending message to", destID, "with data =")
+        dump(data)
         FZMP_SendMessage("FZXC", data, "BN_CHAT_MSG_ADDON", destID)
     end
 end
@@ -533,7 +592,7 @@ local slashCommands = {
     trace = {
         action = function()
             if not DEBUG then
-                cprint("Debug mode must be on first!")
+                cprint("fzxc: must enable debug mode first")
                 return
             end
             dump(sources)
@@ -541,18 +600,13 @@ local slashCommands = {
     },
     ping = {
         action = function(name)
-            if not DEBUG then
-                cprint("Debug mode must be on first!")
+            local presenceID = GetAutoCompletePresenceID(name)
+            if not presenceID then
+                cprint("fzxc: invalid name")
                 return
             end
-            local presenceID = GetAutoCompletePresenceID(name)
-            if presenceID then
-                FZMP_SendMessage(
-                    "FZXC",
-                    {ECHO_REQUEST, tostring(GetTime()), ""},
-                    "BN_CHAT_MSG_ADDON",
-                    presenceID)
-            end
+            FZMP_SendMessage("FZXC", {ECHO_REQUEST, tostring(GetTime()), ""},
+                             "BN_CHAT_MSG_ADDON", presenceID)
         end
     },
 }
