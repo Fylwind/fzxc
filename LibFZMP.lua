@@ -674,9 +674,9 @@ local function decodeUnsigned(stream, flagSize)
     return unsigned - 128, str, (bytes[1] - bytes[1] % leftover) / leftover
 end
 
-local function serializeObject(object, state)
+local function serializeObject(object, stream, state)
     local size = ""
-    local stream = newWriter()
+    if stream == nil then stream = newWriter() end
     local typeID = TYPE_NIL
     local objectType = type(object)
     if objectType == "table" then
@@ -697,7 +697,7 @@ local function serializeObject(object, state)
         end
     end
     if not state then
-        writeByte(stream, FORMAT.FZSF0 + typeID)
+        writeByte(stream, FORMAT.FZSF1 + typeID)
     end
     if typeID == TYPE_TABLE then
         if state then
