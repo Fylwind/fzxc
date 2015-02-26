@@ -1246,10 +1246,6 @@ function _M.SendMessage(prefix, data, channel, recipient)
         -- FZXC protocol
         if prefix == "FZXC" then
 
-            if type(data) == "string" then
-                data = {data}
-            end
-
             local payload = _M.Serialize(data, FORMAT.FZSF0)
             BNSendGameData(recipient, "FZXC", payload)
 
