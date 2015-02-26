@@ -362,7 +362,8 @@ _M.BASE85_FZM = _M.Base85_Encoding(
 -- This class provides the ability to read a string in sequence from beginning
 -- to end.
 _M.StringReader = {}
-_M.StringReader.__index = _M.StringReader
+local stringReader = _M.StringReader
+local stringReader_meta = {__index = stringReader}
 
 ---
 -- Creates a `StringReader` instance from the input string.
@@ -375,7 +376,7 @@ _M.StringReader.__index = _M.StringReader
 --
 function _M.StringReader.New(str)
     local self = {str = str, index = 1, len = #str}
-    setmetatable(self, _M.StringReader)
+    setmetatable(self, stringReader_meta)
     return self
 end
 
@@ -386,7 +387,7 @@ end
 -- @return                    [boolean]
 --   `true` if the stream has reached its end.
 --
-function _M.StringReader:End()
+function stringReader:End()
     return self.index > self.len
 end
 
@@ -401,7 +402,7 @@ end
 -- @return                    [string]
 --   The data read from the stream.
 --
-function _M.StringReader:Read(size)
+function stringReader:Read(size)
     local index = self.index
     if not size then
         return string_sub(self.str, index)
@@ -417,7 +418,7 @@ end
 -- @return                    [`0` to `255`]
 --   The value of the byte.
 --
-function _M.StringReader:ReadByte()
+function stringReader:ReadByte()
     local index = self.index
     self.index = index + 1
     return string_byte(string_sub(self.str, index, index))
@@ -433,7 +434,7 @@ end
 -- @return                    [`0` to `127`]
 --   The value of the half-byte.
 --
-function _M.StringReader:ReadNibble()
+function stringReader:ReadNibble()
     local nibbleIndex = self.nibbleIndex
     local index = self.index
     if nibbleIndex and nibbleIndex + 1 == index then
@@ -459,7 +460,7 @@ end
 -- @return                    [string or `nil`]
 --   The matched result if successful.  On failure, `nil` is returned.
 --
-function _M.StringReader:ReadPattern(pattern)
+function stringReader:ReadPattern(pattern)
     local index = self.index
     local results = {string_find(self.str, pattern, index)}
     if index == results[1] then
@@ -476,7 +477,8 @@ end
 -- This class provides the ability to write a string from beginning to end in
 -- variable-sized blocks of data.
 _M.StringWriter = {}
-_M.StringWriter.__index = _M.StringWriter
+local stringWriter = _M.StringWriter
+local stringWriter_meta = {__index = stringWriter}
 
 ---
 -- Creates a `StringWriter` that allows stream-based writing.
@@ -487,7 +489,7 @@ _M.StringWriter.__index = _M.StringWriter
 function _M.StringWriter.New()
     local chunks = {}
     local self = {chunks = chunks, index = #chunks + 1}
-    setmetatable(self, _M.StringWriter)
+    setmetatable(self, stringWriter_meta)
     return self
 end
 
@@ -497,7 +499,7 @@ end
 -- @param str                 [string]
 --   The data to be written.
 --
-function _M.StringWriter:Write(str)
+function stringWriter:Write(str)
     local index = self.index
     self.chunks[index] = str
     self.index = index + 1
@@ -509,7 +511,7 @@ end
 -- @param  byte               [`0` to `255`]
 --   The data to be written.
 --
-function _M.StringWriter:WriteByte(byte)
+function stringWriter:WriteByte(byte)
     local index = self.index
     self.chunks[index] = byte
     self.index = index + 1
@@ -524,7 +526,7 @@ end
 -- @param  nibble             [`0` to `127`]
 --   The data to be written.
 --
-function _M.StringWriter:WriteNibble(nibble)
+function stringWriter:WriteNibble(nibble)
     local nibbleIndex = self.nibbleIndex
     local index = self.index
     if nibbleIndex and nibbleIndex + 1 == index then
@@ -544,7 +546,7 @@ end
 -- @param  writer             [`StringWriter`]
 --   The data to be merged in.
 --
-function _M.StringWriter:Merge(writer)
+function stringWriter:Merge(writer)
     local chunks = self.chunks
     local lastIndex = self.index - 1
     for chunkIndex, chunk in ipairs(writer.chunks) do
@@ -559,7 +561,7 @@ end
 -- @return                    [string]
 --   All of the written data.
 --
-function _M.StringWriter:ToString()
+function stringWriter:ToString()
     local chunks = self.chunks
     for chunkIndex, chunk in ipairs(chunks) do
         if type(chunk) == "number" then
@@ -596,6 +598,7 @@ _M.SERIALIZATION_FORMAT = {
 local StringReader = _M.StringReader
 local StringWriter = _M.StringWriter
 local newWriter = StringWriter.New
+local merge = StringWriter.Merge
 local writerToString = StringWriter.ToString
 local write = StringWriter.Write
 local writeByte = StringWriter.WriteByte
