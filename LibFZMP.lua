@@ -790,7 +790,7 @@ local function serializeObject(object, state)
             end
         elseif object == -INF then
             eSign, e, sSign, s = 1, 0, 1, 1 -- Minus-infinity
-        elseif object ~= object or object == NAN then
+        elseif not (object == object) then
             eSign, e, sSign, s = 1, 0, 0, 0 -- Not-a-number
         else
             sSign, eSign = 0, 0
