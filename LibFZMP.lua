@@ -117,14 +117,10 @@ end
 -- Base-85 Encoder / Decoder
 -- =========================
 --
--- To create a custom `encoding` table for use with `Base85Encode` and
--- `Base85Decode`, it must contain the following:
+-- To create a custom encoding, it must contain the following:
 --
---  * `toBase85`              [table]
+--  * `mapping`               [string]
 --      Mapping from 0 through 84 to characters.
---
---  * `fromBase85`            [table]
---      Mapping from characters to 0 through 84.
 --
 --  * `zeroChar`              [character, optional]
 --      Used to represents a group group zero-bytes.
@@ -135,98 +131,17 @@ end
 --
 ---
 
-_M.BASE85 = {}
-
----
--- The standard ASCII85 encoding for encoding data in base-85.
---
-_M.BASE85.ASCII = {
-    zeroChar = "z",
-    invalidChars = "[^%s]",
-    toBase85 = {
-        [0] = "!", '"', "#", "$", "%", "&", "'", "(", ")", "*", "+", ",",
-        "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-        ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F",
-        "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
-        "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`",
-        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
-        "n", "o", "p", "q", "r", "s", "t", "u"
-    },
-    fromBase85 = {
-        ["!"] = 0, ['"'] = 1, ["#"] = 2, ["$"] = 3, ["%"] = 4, ["&"] = 5,
-        ["'"] = 6, ["("] = 7, [")"] = 8, ["*"] = 9, ["+"] = 10, [","] = 11,
-        ["-"] = 12, ["."] = 13, ["/"] = 14, ["0"] = 15, ["1"] = 16,
-        ["2"] = 17, ["3"] = 18, ["4"] = 19, ["5"] = 20, ["6"] = 21,
-        ["7"] = 22, ["8"] = 23, ["9"] = 24, [":"] = 25, [";"] = 26,
-        ["<"] = 27, ["="] = 28, [">"] = 29, ["?"] = 30, ["@"] = 31,
-        ["A"] = 32, ["B"] = 33, ["C"] = 34, ["D"] = 35, ["E"] = 36,
-        ["F"] = 37, ["G"] = 38, ["H"] = 39, ["I"] = 40, ["J"] = 41,
-        ["K"] = 42, ["L"] = 43, ["M"] = 44, ["N"] = 45, ["O"] = 46,
-        ["P"] = 47, ["Q"] = 48, ["R"] = 49, ["S"] = 50, ["T"] = 51,
-        ["U"] = 52, ["V"] = 53, ["W"] = 54, ["X"] = 55, ["Y"] = 56,
-        ["Z"] = 57, ["["] = 58, ["\\"] = 59, ["]"] = 60, ["^"] = 61,
-        ["_"] = 62, ["`"] = 63, ["a"] = 64, ["b"] = 65, ["c"] = 66,
-        ["d"] = 67, ["e"] = 68, ["f"] = 69, ["g"] = 70, ["h"] = 71,
-        ["i"] = 72, ["j"] = 73, ["k"] = 74, ["l"] = 75, ["m"] = 76,
-        ["n"] = 77, ["o"] = 78, ["p"] = 79, ["q"] = 80, ["r"] = 81,
-        ["s"] = 82, ["t"] = 83, ["u"] = 84
-    }
-}
-
----
--- Custom base-85 encoding for the internal messaging protocol.
---
-_M.BASE85.FZM = {
-    zeroChar = ".",
-    invalidChars = "[^%s]",
-    toBase85 = {
-        [0] = "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b",
-        "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
-        "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "A", "B",
-        "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
-        "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "~",
-        "-", "^", "=", "/", "+", "*", "%", "$", "#", "@", "&", "(", ")",
-        "{", "}", "`", "'", ",", ";", "?", "!"
-    },
-    fromBase85 = {
-         ["0"] = 0, ["1"] = 1, ["2"] = 2, ["3"] = 3, ["4"] = 4, ["5"] = 5,
-         ["6"] = 6, ["7"] = 7, ["8"] = 8, ["9"] = 9, ["a"] = 10, ["b"] = 11,
-         ["c"] = 12, ["d"] = 13, ["e"] = 14, ["f"] = 15, ["g"] = 16,
-         ["h"] = 17, ["i"] = 18, ["j"] = 19, ["k"] = 20, ["l"] = 21,
-         ["m"] = 22, ["n"] = 23, ["o"] = 24, ["p"] = 25, ["q"] = 26,
-         ["r"] = 27, ["s"] = 28, ["t"] = 29, ["u"] = 30, ["v"] = 31,
-         ["w"] = 32, ["x"] = 33, ["y"] = 34, ["z"] = 35, ["A"] = 36,
-         ["B"] = 37, ["C"] = 38, ["D"] = 39, ["E"] = 40, ["F"] = 41,
-         ["G"] = 42, ["H"] = 43, ["I"] = 44, ["J"] = 45, ["K"] = 46,
-         ["L"] = 47, ["M"] = 48, ["N"] = 49, ["O"] = 50, ["P"] = 51,
-         ["Q"] = 52, ["R"] = 53, ["S"] = 54, ["T"] = 55, ["U"] = 56,
-         ["V"] = 57, ["W"] = 58, ["X"] = 59, ["Y"] = 60, ["Z"] = 61,
-         ["_"] = 62, ["~"] = 63, ["-"] = 64, ["^"] = 65, ["="] = 66,
-         ["/"] = 67, ["+"] = 68, ["*"] = 69, ["%"] = 70, ["$"] = 71,
-         ["#"] = 72, ["@"] = 73, ["&"] = 74, ["("] = 75, [")"] = 76,
-         ["{"] = 77, ["}"] = 78, ["`"] = 79, ["'"] = 80, [","] = 81,
-         [";"] = 82, ["?"] = 83, ["!"] = 84
-    }
-}
-
-local BASE85_ASCII = _M.BASE85.ASCII
-
 ---
 -- Encodes a string of bytes using a base-85 encoding.
 --
 -- @param  str                [string]
 --   Data to be encoded.
 --
--- @param  encoding           [table, optional]
---   Encoding table.  Default: `BASE85_ASCII`.
---
 -- @return                    [string]
 --   Encoded result.
 --
-function _M.Base85Encode(str, encoding)
-    if not encoding then encoding = BASE85_ASCII end
-    local toBase85 = encoding.toBase85
-    local zeroChar = encoding.zeroChar or string_rep(toBase85[0], 5)
+local function base85Encode(str, fromBase85, toBase85,
+                            zeroChar, invalidChars)
     local chunks = {}
     local chunksEnd = 1
     for group in string_gmatch(str, "(....)") do
@@ -284,18 +199,12 @@ end
 -- @param  str                [string]
 --   Data to be decoded.
 --
--- @param  encoding           [table, optional]
---   Encoding table.  Default: `BASE85_ASCII`.
---
 -- @return                    [string or (`nil`, string)]
 --   Decoded result.  If an error occurs, `nil` is returned along with an error
 --   message.
 --
-function _M.Base85Decode(str, encoding)
-    if not encoding then encoding = BASE85_ASCII end
-    local fromBase85 = encoding.fromBase85
-    local zeroChar = encoding.zeroChar
-    local invalidChars = encoding.invalidChars or ".^" -- Won't ever match
+local function base85Decode(str, fromBase85, toBase85,
+                            zeroChar, invalidChars)
     local chunks = {}
     local chunksEnd = 1
     local n = 0
@@ -367,6 +276,81 @@ function _M.Base85Decode(str, encoding)
     end
     return table_concat(chunks)
 end
+
+---
+-- Constructs a base-85 encoding.
+--
+-- To create a custom encoding, it must contain the following:
+--
+-- @param  mapping : string | nil
+--   Mapping from 0 through 84 to characters.
+--
+-- @param  zeroChar : character | nil
+--   Used to represents a group group zero-bytes.
+--
+-- @param  invalidChars : pattern | nil
+--   Characters to be rejected as errors.  The base-85 characters are
+--   already excluded so it's OK for this pattern to match them.
+--
+-- @return : {"Encoder" : string -> string, "Decoder" : string -> string }
+--   Decoded result.  If an error occurs, `nil` is returned along with an error
+--   message.
+--
+function _M.Base85_Encoding(mapping, zeroChar, invalidChars)
+    if mapping == nil then
+        mapping =
+            "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJK" ..
+            "LMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstu"
+    elseif #mapping ~= 85 then
+        error("FZMP.Base85_Encoding: mapping must be exactly 85 chars")
+    end
+
+    if zeroChar == nil then
+        zeroChar = "z"
+    elseif #zeroChar ~= 1 then
+        error("FZMP.Base85_Encoding: zeroChar must be a single char")
+    end
+
+    if invalidChars == nil then
+        invalidChars = "[^%s]"
+    end
+
+    local fromBase85 = {}
+    local toBase85   = {} -- accessing tables is faster than accessing strings!
+    for i = 1, 85 do
+        local j = i - 1
+        local c = string_sub(mapping, i, i)
+        fromBase85[c] = j
+        toBase85[j] = c
+    end
+
+    mapping = nil
+    return {
+        Encode = function(str)
+            return base85Encode(str, fromBase85, toBase85,
+                                zeroChar, invalidChars)
+        end,
+        Decode = function(str)
+            return base85Decode(str, fromBase85, toBase85,
+                                zeroChar, invalidChars)
+        end
+    }
+end
+
+---
+-- The standard ASCII85 encoding for encoding data in base-85.
+--
+_M.BASE85_ASCII = _M.Base85_Encoding()
+
+---
+-- Custom base-85 encoding for the internal messaging protocol.
+--
+_M.BASE85_FZM = _M.Base85_Encoding(
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG" ..
+    "HIJKLMNOPQRSTUVWXYZ_~-^=/+*%$#@&(){}`',;?!",
+    ".",
+    "[^%s]"
+)
 
 ------------------------------------------------------------------------------
 --
