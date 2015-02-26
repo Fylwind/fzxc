@@ -1238,9 +1238,6 @@ if not RegisterAddonMessagePrefix("FZM") then
     error('RegisterAddonMessagePrefix("FZM") failed.')
 end
 
-local function sendPacket(prefix, payload)
-end
-
 -- For now, payload is assumed to be an array of strings (or just a string)
 -- prefix must be 16 chars or fewer
 function _M.SendMessage(prefix, data, channel, recipient)
@@ -1290,24 +1287,4 @@ function _M.UnregisterMessageListener(prefix, listener)
             listeners[prefix] = nil
         end
     end
-end
-
-_M.Host = {}
-_M.Host.__index = _M.Host
-
----
--- Creates a new Host object (represents a valid target for communications
-function _M.Host.New(name, hostType)
-    local self = {str = str, index = 1, len = #str}
-    setmetatable(self, _M.Host)
-    return self
-end
-
-_M.Socket = {}
-_M.Socket.__index = _M.Socket
-
-function _M.Socket.New(str)
-    local self = {str = str, index = 1, len = #str}
-    setmetatable(self, _M.Socket)
-    return self
 end
