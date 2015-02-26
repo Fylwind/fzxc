@@ -43,6 +43,10 @@ function RegisterAddonMessagePrefix(prefix)
     return true
 end
 
-function DevTools_Dump(t)
+function dump(t)
     require("pl.pretty").dump(t)
+end
+
+function DevTools_Dump(t)
+    dump(t)
 end
