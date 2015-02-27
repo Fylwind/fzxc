@@ -611,7 +611,7 @@ local function initialize()
         cprint(L"Usage:")
         cprintf("    |cffffff00/fzxc|r |cff0099ff%s %s|r",
                 L"<command>", L"<arguments>")
-        cprintf(L"where %s is one of:",
+        cprintf(L"where the case-sensitive %s is one of:",
                 string_format("|cff0099ff%s|r", L"<command>"))
         for command, commandInfo in pairs(slashCommands) do
             description = commandInfo.description
