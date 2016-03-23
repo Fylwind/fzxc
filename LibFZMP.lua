@@ -45,8 +45,8 @@ local string_sub = string.sub
 local table_concat = table.concat
 
 local BNGetFriendInfo = BNGetFriendInfo
-local BNGetNumFriendToons = BNGetNumFriendToons
-local BNGetToonInfo = BNGetToonInfo
+local BNGetNumFriendGameAccounts = BNGetNumFriendGameAccounts
+local BNGetGameAccountInfo = BNGetGameAccountInfo
 local BNSendWhisper = BNSendWhisper
 local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter
 local GetChannelName = GetChannelName
