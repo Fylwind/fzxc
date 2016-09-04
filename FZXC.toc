@@ -1,4 +1,4 @@
-## Interface: 60200
+## Interface: 70000
 ## Title: FZ Cross-realm Communicator
 ## Author: Fylwind, Wraithstrike
 ## Notes: Allows communication to be shared across realm through Battle.net.
